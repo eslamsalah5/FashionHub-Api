@@ -16,15 +16,30 @@ namespace Presentation.Controllers
         public ProductsController(IProductService productService)
         {
             _productService = productService;
-        }
-
-        [HttpGet]
-        public async Task<IActionResult> GetProducts([FromQuery] int pageIndex = 1, [FromQuery] int pageSize = 10)
+        }        [HttpGet]
+        public async Task<IActionResult> GetProducts([FromQuery] int pageIndex = 0, [FromQuery] int pageSize = 10)
         {
             var result = await _productService.GetAllProductsAsync(pageIndex, pageSize);
             
             if (result.IsSuccess)
+            {
+                var products = result.Data;
+                var totalCount = await _productService.GetTotalProductCountAsync();
+                
+                if (totalCount.IsSuccess)
+                {
+                    var metadata = new Presentation.Models.PaginationMetadata(
+                        pageIndex,
+                        pageSize,
+                        totalCount.Data
+                    );
+                
+                    Response.Headers.Append("X-Pagination", System.Text.Json.JsonSerializer.Serialize(metadata));
+                    return Ok(result.Data);
+                }
+                
                 return Ok(result.Data);
+            }
                 
             return BadRequest(result.Errors);
         }
@@ -39,14 +54,26 @@ namespace Presentation.Controllers
                 
             return NotFound(result.Errors);
         }
-        
-        [HttpGet("category/{category}")]
-        public async Task<IActionResult> GetProductsByCategory(ProductCategory category, [FromQuery] int pageIndex = 1, [FromQuery] int pageSize = 10)
+          [HttpGet("category/{category}")]
+        public async Task<IActionResult> GetProductsByCategory(ProductCategory category, [FromQuery] int pageIndex = 0, [FromQuery] int pageSize = 10)
         {
-            var result = await _productService.GetProductsByCategoryAsync(category, pageIndex, pageSize);
+            // Validate pageSize to prevent requesting too many records
+            pageSize = Math.Min(pageSize, 50);
             
-            if (result.IsSuccess)
+            var result = await _productService.GetProductsByCategoryAsync(category, pageIndex, pageSize);
+            var countResult = await _productService.GetTotalProductCountAsync();
+            
+            if (result.IsSuccess && countResult.IsSuccess)
+            {
+                var metadata = new Presentation.Models.PaginationMetadata(
+                    pageIndex,
+                    pageSize,
+                    countResult.Data
+                );
+                
+                Response.Headers.Append("X-Pagination", System.Text.Json.JsonSerializer.Serialize(metadata));
                 return Ok(result.Data);
+            }
                 
             return BadRequest(result.Errors);
         }
@@ -61,25 +88,49 @@ namespace Presentation.Controllers
                 
             return BadRequest(result.Errors);
         }
-        
-        [HttpGet("sale")]
-        public async Task<IActionResult> GetProductsOnSale([FromQuery] int pageIndex = 1, [FromQuery] int pageSize = 10)
+          [HttpGet("sale")]
+        public async Task<IActionResult> GetProductsOnSale([FromQuery] int pageIndex = 0, [FromQuery] int pageSize = 10)
         {
-            var result = await _productService.GetProductsOnSaleAsync(pageIndex, pageSize);
+            // Validate pageSize to prevent requesting too many records
+            pageSize = Math.Min(pageSize, 50);
             
-            if (result.IsSuccess)
+            var result = await _productService.GetProductsOnSaleAsync(pageIndex, pageSize);
+            var countResult = await _productService.GetTotalProductCountAsync();
+            
+            if (result.IsSuccess && countResult.IsSuccess)
+            {
+                var metadata = new Presentation.Models.PaginationMetadata(
+                    pageIndex,
+                    pageSize,
+                    countResult.Data
+                );
+                
+                Response.Headers.Append("X-Pagination", System.Text.Json.JsonSerializer.Serialize(metadata));
                 return Ok(result.Data);
+            }
                 
             return BadRequest(result.Errors);
         }
-        
-        [HttpGet("search")]
-        public async Task<IActionResult> SearchProducts([FromQuery] string term, [FromQuery] int pageIndex = 1, [FromQuery] int pageSize = 10)
+          [HttpGet("search")]
+        public async Task<IActionResult> SearchProducts([FromQuery] string term, [FromQuery] int pageIndex = 0, [FromQuery] int pageSize = 10)
         {
-            var result = await _productService.SearchProductsAsync(term, pageIndex, pageSize);
+            // Validate pageSize to prevent requesting too many records
+            pageSize = Math.Min(pageSize, 50);
             
-            if (result.IsSuccess)
+            var result = await _productService.SearchProductsAsync(term, pageIndex, pageSize);
+            var countResult = await _productService.GetTotalProductCountAsync();
+            
+            if (result.IsSuccess && countResult.IsSuccess)
+            {
+                var metadata = new Presentation.Models.PaginationMetadata(
+                    pageIndex,
+                    pageSize,
+                    countResult.Data
+                );
+                
+                Response.Headers.Append("X-Pagination", System.Text.Json.JsonSerializer.Serialize(metadata));
                 return Ok(result.Data);
+            }
                 
             return BadRequest(result.Errors);
         }
@@ -89,7 +140,7 @@ namespace Presentation.Controllers
         {
             var result = await _productService.CreateProductAsync(createProductDto);
             
-            if (result.IsSuccess)
+            if (result.IsSuccess && result.Data != null)
                 return CreatedAtAction(nameof(GetProduct), new { id = result.Data.Id }, result.Data);
                 
             return BadRequest(result.Errors);
@@ -104,7 +155,7 @@ namespace Presentation.Controllers
             if (result.IsSuccess)
                 return NoContent();
                 
-            return result.Errors.Contains("Product not found") ? NotFound(result.Errors) : BadRequest(result.Errors);
+            return result.Errors != null && result.Errors.Contains("Product not found") ? NotFound(result.Errors) : BadRequest(result.Errors);
         }
           [Authorize(Roles = "Admin")]
         [HttpPatch("{id}/stock")]
@@ -115,7 +166,7 @@ namespace Presentation.Controllers
             if (result.IsSuccess)
                 return NoContent();
                 
-            return result.Errors.Contains("Product not found") ? NotFound(result.Errors) : BadRequest(result.Errors);
+            return result.Errors != null && result.Errors.Contains("Product not found") ? NotFound(result.Errors) : BadRequest(result.Errors);
         }
         
         [Authorize(Roles = "Admin")]
@@ -127,7 +178,7 @@ namespace Presentation.Controllers
             if (result.IsSuccess)
                 return NoContent();
                 
-            return result.Errors.Contains("Product not found") ? NotFound(result.Errors) : BadRequest(result.Errors);
+            return result.Errors != null && result.Errors.Contains("Product not found") ? NotFound(result.Errors) : BadRequest(result.Errors);
         }
         
         [Authorize(Roles = "Admin")]
@@ -139,7 +190,7 @@ namespace Presentation.Controllers
             if (result.IsSuccess)
                 return NoContent();
                 
-            return result.Errors.Contains("Product not found") ? NotFound(result.Errors) : BadRequest(result.Errors);
+            return result.Errors != null && result.Errors.Contains("Product not found") ? NotFound(result.Errors) : BadRequest(result.Errors);
         }
         
         [Authorize(Roles = "Admin")]
@@ -151,7 +202,7 @@ namespace Presentation.Controllers
             if (result.IsSuccess)
                 return NoContent();
                 
-            return result.Errors.Contains("Product not found") ? NotFound(result.Errors) : BadRequest(result.Errors);
+            return result.Errors != null && result.Errors.Contains("Product not found") ? NotFound(result.Errors) : BadRequest(result.Errors);
         }
     }
 }

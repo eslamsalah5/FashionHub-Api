@@ -75,28 +75,59 @@ namespace Application.Services
         {
             try
             {
-                // TODO: Implement proper pagination
+                // Get all products
                 var products = await _unitOfWork.Products.GetAllAsync();
-                var productList = products.Where(p => p.IsActive).ToList();
-
-                return ServiceResult<IReadOnlyList<ProductDto>>.Success(productList.ToProductDtoList());
+                
+                // Filter active products
+                var activeProducts = products.Where(p => p.IsActive).ToList();
+                
+                // Apply pagination
+                var totalCount = activeProducts.Count;
+                
+                // Ensure pageIndex is valid and at least 0
+                pageIndex = Math.Max(0, pageIndex);
+                
+                // Get the products for the requested page
+                var pagedProducts = activeProducts
+                    .Skip(pageIndex * pageSize)
+                    .Take(pageSize)
+                    .ToList();
+                
+                // Convert to DTOs
+                var productDtos = pagedProducts.ToProductDtoList();
+                
+                return ServiceResult<IReadOnlyList<ProductDto>>.Success(productDtos);
             }
             catch (Exception ex)
             {
                 return ServiceResult<IReadOnlyList<ProductDto>>.Failure($"Failed to get products: {ex.Message}");
             }
-        }        public async Task<ServiceResult<IReadOnlyList<ProductDto>>> GetProductsByCategoryAsync(ProductCategory category, int pageIndex, int pageSize)
+        }public async Task<ServiceResult<IReadOnlyList<ProductDto>>> GetProductsByCategoryAsync(ProductCategory category, int pageIndex, int pageSize)
         {
             try
             {
                 var products = await _unitOfWork.Products.GetProductsByCategoryAsync(category);
-                return ServiceResult<IReadOnlyList<ProductDto>>.Success(products.ToProductDtoList());
+                
+                // Apply pagination
+                var totalCount = products.Count;
+                var pageCount = (int)Math.Ceiling(totalCount / (double)pageSize);
+                
+                // Ensure pageIndex is valid
+                pageIndex = Math.Max(0, Math.Min(pageIndex, pageCount - 1));
+                
+                // Get the products for the requested page
+                var pagedProducts = products
+                    .Skip(pageIndex * pageSize)
+                    .Take(pageSize)
+                    .ToList();
+                
+                return ServiceResult<IReadOnlyList<ProductDto>>.Success(pagedProducts.ToProductDtoList());
             }
             catch (Exception ex)
             {
                 return ServiceResult<IReadOnlyList<ProductDto>>.Failure($"Failed to get products: {ex.Message}");
             }
-        }        public async Task<ServiceResult<IReadOnlyList<ProductDto>>> GetFeaturedProductsAsync()
+        }public async Task<ServiceResult<IReadOnlyList<ProductDto>>> GetFeaturedProductsAsync()
         {
             try
             {
@@ -112,7 +143,21 @@ namespace Application.Services
             try
             {
                 var products = await _unitOfWork.Products.GetProductsOnSaleAsync();
-                return ServiceResult<IReadOnlyList<ProductDto>>.Success(products.ToProductDtoList());
+                
+                // Apply pagination
+                var totalCount = products.Count;
+                var pageCount = (int)Math.Ceiling(totalCount / (double)pageSize);
+                
+                // Ensure pageIndex is valid
+                pageIndex = Math.Max(0, Math.Min(pageIndex, pageCount - 1));
+                
+                // Get the products for the requested page
+                var pagedProducts = products
+                    .Skip(pageIndex * pageSize)
+                    .Take(pageSize)
+                    .ToList();
+                
+                return ServiceResult<IReadOnlyList<ProductDto>>.Success(pagedProducts.ToProductDtoList());
             }
             catch (Exception ex)
             {
@@ -123,13 +168,27 @@ namespace Application.Services
             try
             {
                 var products = await _unitOfWork.Products.SearchProductsAsync(searchTerm);
-                return ServiceResult<IReadOnlyList<ProductDto>>.Success(products.ToProductDtoList());
+                
+                // Apply pagination
+                var totalCount = products.Count;
+                var pageCount = (int)Math.Ceiling(totalCount / (double)pageSize);
+                
+                // Ensure pageIndex is valid
+                pageIndex = Math.Max(0, Math.Min(pageIndex, pageCount - 1));
+                
+                // Get the products for the requested page
+                var pagedProducts = products
+                    .Skip(pageIndex * pageSize)
+                    .Take(pageSize)
+                    .ToList();
+                
+                return ServiceResult<IReadOnlyList<ProductDto>>.Success(pagedProducts.ToProductDtoList());
             }
             catch (Exception ex)
             {
                 return ServiceResult<IReadOnlyList<ProductDto>>.Failure($"Failed to search products: {ex.Message}");
             }
-        }          public async Task<ServiceResult> UpdateProductAsync(int id, UpdateProductDto updateProductDto)
+        }public async Task<ServiceResult> UpdateProductAsync(int id, UpdateProductDto updateProductDto)
         {
             // Authentication/Authorization is handled by [Authorize(Roles = "Admin")] at controller level
             try
@@ -282,6 +341,18 @@ namespace Application.Services
                 return ServiceResult.Failure($"Failed to delete product: {ex.Message}");
             }
         }
-
+        public async Task<ServiceResult<int>> GetTotalProductCountAsync()
+        {
+            try
+            {
+                var products = await _unitOfWork.Products.GetAllAsync();
+                var activeProducts = products.Where(p => p.IsActive && !p.IsDeleted).ToList();
+                return ServiceResult<int>.Success(activeProducts.Count);
+            }
+            catch (Exception ex)
+            {
+                return ServiceResult<int>.Failure($"Failed to get product count: {ex.Message}");
+            }
+        }
     }
 }

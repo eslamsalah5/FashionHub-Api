@@ -11,14 +11,14 @@ namespace Application.Services.Interfaces
     {
         // Create operations
         Task<ServiceResult<ProductDto>> CreateProductAsync(CreateProductDto createProductDto);
-        
-        // Read operations
+          // Read operations
         Task<ServiceResult<ProductDto>> GetProductByIdAsync(int id);
         Task<ServiceResult<IReadOnlyList<ProductDto>>> GetAllProductsAsync(int pageIndex, int pageSize);
         Task<ServiceResult<IReadOnlyList<ProductDto>>> GetProductsByCategoryAsync(ProductCategory category, int pageIndex, int pageSize);
         Task<ServiceResult<IReadOnlyList<ProductDto>>> GetFeaturedProductsAsync();
         Task<ServiceResult<IReadOnlyList<ProductDto>>> GetProductsOnSaleAsync(int pageIndex, int pageSize);
         Task<ServiceResult<IReadOnlyList<ProductDto>>> SearchProductsAsync(string searchTerm, int pageIndex, int pageSize);
+        Task<ServiceResult<int>> GetTotalProductCountAsync();
           // Update operations
         Task<ServiceResult> UpdateProductAsync(int id, UpdateProductDto updateProductDto);
         Task<ServiceResult> UpdateStockQuantityAsync(int id, int quantity);
