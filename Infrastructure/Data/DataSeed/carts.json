@@ -1,0 +1,62 @@
+[
+  {
+    "CustomerId": "6ac2a014-a3f9-4146-9d49-e72cd97af391",
+    "CartItems": [
+      {
+        "ProductId": 1,
+        "Quantity": 2,
+        "PriceAtAddition": 89.99
+      },
+      {
+        "ProductId": 3,
+        "Quantity": 1,
+        "PriceAtAddition": 249.99
+      }
+    ]
+  },
+  {
+    "CustomerId": "6c98b2f9-feb3-48c6-a480-e9ea9c9e9443",
+    "CartItems": [
+      {
+        "ProductId": 2,
+        "Quantity": 1,
+        "PriceAtAddition": 59.99
+      },
+      {
+        "ProductId": 5,
+        "Quantity": 3,
+        "PriceAtAddition": 29.99
+      }
+    ]
+  },
+  {
+    "CustomerId": "e223c8d6-14dc-426b-8073-1276090c86e9",
+    "CartItems": [
+      {
+        "ProductId": 1,
+        "Quantity": 1,
+        "PriceAtAddition": 89.99
+      },
+      {
+        "ProductId": 4,
+        "Quantity": 2,
+        "PriceAtAddition": 199.99
+      }
+    ]
+  },
+  {
+    "CustomerId": "ea93f90d-736e-43a2-9417-cdfb76fdf423",
+    "CartItems": [
+      {
+        "ProductId": 6,
+        "Quantity": 1,
+        "PriceAtAddition": 79.99
+      },
+      {
+        "ProductId": 7,
+        "Quantity": 1,
+        "PriceAtAddition": 35.99
+      }
+    ]
+  }
+]

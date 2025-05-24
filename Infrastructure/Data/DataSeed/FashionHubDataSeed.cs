@@ -51,7 +51,8 @@ namespace Infrastructure.Data.DataSeed
                 await SeedAdminAsync(adminPassword);
                 await SeedCustomersAsync(customerPassword);
                 await SeedProductsAsync();
- 
+                await SeedCartsAsync();
+
                 //await SeedBookingsAndTicketsAsync();
 
                 _logger.LogInformation("Database seeding completed successfully!");
@@ -300,6 +301,158 @@ namespace Infrastructure.Data.DataSeed
                 _logger.LogInformation("Products already exist in database. Skipping product seeding.");
             }
         }
+          // Method to seed Cart data
+        private async Task SeedCartsAsync()
+        {
+            _logger.LogInformation("Seeding carts...");
+            
+            if (!await _context.Carts.AnyAsync())
+            {
+                try
+                {
+                    _logger.LogInformation("Reading cart data from carts.json");
+                    
+                    // Define the path to the carts.json file
+                    string jsonFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Infrastructure", "Data", "DataSeed", "carts.json");
+                    
+                    // If the file doesn't exist at the expected path, try looking in alternative locations
+                    if (!File.Exists(jsonFilePath))
+                    {
+                        // Try alternative paths
+                        string[] possiblePaths = new[]
+                        {
+                            "carts.json",
+                            Path.Combine("Data", "DataSeed", "carts.json"),
+                            Path.Combine("Infrastructure", "Data", "DataSeed", "carts.json"),
+                            Path.Combine("..", "Infrastructure", "Data", "DataSeed", "carts.json"),
+                            @"e:\iti files\web api\FashionHub\Infrastructure\Data\DataSeed\carts.json",
+                            Path.Combine(Directory.GetCurrentDirectory(), "Infrastructure", "Data", "DataSeed", "carts.json"),
+                            Path.Combine(Directory.GetCurrentDirectory(), "carts.json")
+                        };
+                        
+                        foreach (var path in possiblePaths)
+                        {
+                            _logger.LogInformation("Checking path: {Path}", path);
+                            if (File.Exists(path))
+                            {
+                                jsonFilePath = path;
+                                _logger.LogInformation("Found carts.json at: {Path}", path);
+                                break;
+                            }
+                        }                    }
+                    
+                    if (!File.Exists(jsonFilePath))
+                    {
+                        _logger.LogError("Carts JSON file not found in any of the expected locations");
+                        return;
+                    }
+                    
+                    _logger.LogInformation("Reading carts data from file: {FilePath}", jsonFilePath);
+                    
+                    // Read and deserialize the JSON data
+                    string jsonData = await File.ReadAllTextAsync(jsonFilePath);
+                    var cartData = JsonSerializer.Deserialize<List<CartData>>(jsonData, 
+                        new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    
+                    if (cartData == null || !cartData.Any())
+                    {
+                        _logger.LogWarning("No cart data found in JSON file");
+                        return;
+                    }
+                    
+                    _logger.LogInformation("Found {Count} carts in JSON file", cartData.Count);
+                    
+                    // Create list to hold all carts
+                    var carts = new List<Cart>();
+                    var cartItems = new List<CartItem>();
+                    
+                    // Get all customer IDs from database to match with seed data
+                    var customers = await _context.Customers.ToListAsync();
+                    var products = await _context.Products.ToListAsync();
+                    
+                    if (!customers.Any())
+                    {
+                        _logger.LogWarning("No customers found in database. Cannot seed carts.");
+                        return;
+                    }
+                      // Map cart data to domain entities
+                    for (int i = 0; i < Math.Min(cartData.Count, customers.Count); i++)
+                    {
+                        var cartDataItem = cartData[i];
+                        var customerId = string.IsNullOrEmpty(cartDataItem.CustomerId) ? customers[i].Id : cartDataItem.CustomerId;
+                        
+                        // Verify customer exists
+                        if (!string.IsNullOrEmpty(customerId) && !await _context.Customers.AnyAsync(c => c.Id == customerId))
+                        {
+                            _logger.LogWarning("Customer with ID {CustomerId} not found. Using available customer.", customerId);
+                            customerId = customers[i].Id;
+                        }
+                        
+                        var cart = new Cart
+                        {
+                            CustomerId = customerId,
+                            CreatedAt = DateTime.UtcNow,
+                            ModifiedAt = DateTime.UtcNow
+                        };
+                        
+                        carts.Add(cart);
+                        
+                        // We need to save the carts first to get their IDs
+                        await _context.Carts.AddAsync(cart);
+                    }
+                    
+                    // Save carts to get their IDs
+                    await _context.SaveChangesAsync();
+                    
+                    // Now add cart items
+                    for (int i = 0; i < carts.Count; i++)
+                    {
+                        var cart = carts[i];
+                        var cartDataItem = cartData[i];
+                        
+                        foreach (var itemData in cartDataItem.CartItems)
+                        {
+                            // Make sure product exists
+                            var productId = itemData.ProductId;
+                            if (productId <= 0 || productId > products.Count)
+                            {
+                                _logger.LogWarning("Product with ID {ProductId} not found. Skipping cart item.", productId);
+                                continue;
+                            }
+                            
+                            var cartItem = new CartItem
+                            {
+                                CartId = cart.Id,
+                                ProductId = productId,
+                                Quantity = itemData.Quantity,
+                                PriceAtAddition = itemData.PriceAtAddition
+                            };
+                            
+                            cartItems.Add(cartItem);
+                        }
+                    }
+                    
+                    // Add all cart items in a single operation
+                    if (cartItems.Any())
+                    {
+                        await _context.CartItems.AddRangeAsync(cartItems);
+                        await _context.SaveChangesAsync();
+                    }
+                    
+                    _logger.LogInformation("Successfully added {CartCount} carts with {ItemCount} cart items to the database", 
+                        carts.Count, cartItems.Count);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error occurred while seeding carts");
+                    throw; // Re-throw the exception to signal the failure
+                }
+            }
+            else
+            {
+                _logger.LogInformation("Carts already exist in database. Skipping cart seeding.");
+            }
+        }
         
         // Helper method to map gender values from JSON to Gender enum
         private Gender MapGenderValue(string gender)
@@ -333,6 +486,20 @@ namespace Infrastructure.Data.DataSeed
             public bool IsFeatured { get; set; }
             public string Gender { get; set; } = string.Empty;
             public string Tags { get; set; } = string.Empty;
+        }
+        
+        // Helper class to deserialize cart data from JSON
+        private class CartData
+        {
+            public string CustomerId { get; set; } = string.Empty;
+            public List<CartItemData> CartItems { get; set; } = new List<CartItemData>();
+        }
+        
+        private class CartItemData
+        {
+            public int ProductId { get; set; }
+            public int Quantity { get; set; }
+            public decimal PriceAtAddition { get; set; }
         }
     }
 }

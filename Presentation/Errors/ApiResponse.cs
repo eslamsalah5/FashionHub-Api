@@ -13,6 +13,13 @@ namespace Presentation.Errors
 			StatusCode = statusCode;
 			Message = message ?? GetDefaultMessageForStatusCode(statusCode);
 		}
+		
+		public ApiResponse(int statusCode, object? data, string? message=null)
+		{
+			StatusCode = statusCode;
+			Data = data;
+			Message = message ?? GetDefaultMessageForStatusCode(statusCode);
+		}
 
 		private string? GetDefaultMessageForStatusCode(int statusCode)
 		{

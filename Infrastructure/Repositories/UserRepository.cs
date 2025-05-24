@@ -40,12 +40,14 @@ namespace Infrastructure.Repositories
         {
             return await _context.Set<Admin>()
                 .FirstOrDefaultAsync(a => a.Id == userId);
-        }
-
-        public async Task<Customer?> GetCustomerByUserIdAsync(string userId)
+        }        public async Task<Customer?> GetCustomerByUserIdAsync(string userId)
         {
-            return await _context.Set<Customer>()
+            // Add logging or more detailed error handling
+            var customer = await _context.Set<Customer>()
+                .Include(c => c.AppUser)
                 .FirstOrDefaultAsync(c => c.Id == userId);
+            
+            return customer;
         }
 
         public async Task<AppUser?> GetUserByEmailAsync(string email)

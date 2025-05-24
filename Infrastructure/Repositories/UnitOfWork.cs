@@ -12,8 +12,10 @@ namespace Infrastructure.Repositories
     {
         private readonly ApplicationDbContext _context;
         private readonly UserManager<AppUser> _userManager;
-        private readonly SignInManager<AppUser> _signInManager;        private IUserRepository? _userRepository;
+        private readonly SignInManager<AppUser> _signInManager;
+        private IUserRepository? _userRepository;
         private IProductRepository? _productRepository;
+        private ICartRepository? _cartRepository;
         private IGenericRepository<Admin>? _adminsRepository;
         private IGenericRepository<Customer>? _customersRepository;
 
@@ -34,6 +36,9 @@ namespace Infrastructure.Repositories
 
         public IProductRepository Products =>
             _productRepository ??= new ProductRepository(_context);
+            
+        public ICartRepository Carts =>
+            _cartRepository ??= new CartRepository(_context);
         
         #endregion
 

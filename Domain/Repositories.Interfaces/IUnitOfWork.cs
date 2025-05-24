@@ -9,8 +9,8 @@ namespace Domain.Repositories.Interfaces
         // Custom Repositories
         IUserRepository Users { get; }
         IProductRepository Products { get; }
+        ICartRepository Carts { get; }
         IGenericRepository<Admin> Admins { get; }
-
         IGenericRepository<Customer> Customers { get; }
 
         Task<int> SaveChangesAsync();

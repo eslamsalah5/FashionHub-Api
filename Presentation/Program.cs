@@ -38,9 +38,11 @@ namespace Presentation
           
               // Configure Auth services
             builder.Services.AddAuthService();
-            
-            // Configure Product services
+              // Configure Product services
             builder.Services.AddProductService();
+            
+            // Configure Cart services
+            builder.Services.AddCartService();
             
             // Configure Repository services
             builder.Services.AddRepositoryServices();

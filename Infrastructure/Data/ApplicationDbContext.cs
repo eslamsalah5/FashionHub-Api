@@ -13,6 +13,8 @@ namespace Infrastructure.Data
         }        public DbSet<Customer> Customers { get; set; } = null!;
         public DbSet<Admin> Admins { get; set; } = null!;
         public DbSet<Product> Products { get; set; } = null!;
+        public DbSet<Cart> Carts { get; set; } = null!;
+        public DbSet<CartItem> CartItems { get; set; } = null!;
 
 
         protected override void OnModelCreating(ModelBuilder builder)
