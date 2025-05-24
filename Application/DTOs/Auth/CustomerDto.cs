@@ -12,8 +12,7 @@ namespace Application.DTOs.Auth
         [Required]
         [EmailAddress]
         public string Email { get; set; } = string.Empty;
-        
-        [Required]
+          [Required]
         [Phone]
         public string PhoneNumber { get; set; } = string.Empty;
         

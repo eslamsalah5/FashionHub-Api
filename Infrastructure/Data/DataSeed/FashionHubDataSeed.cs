@@ -44,14 +44,13 @@ namespace Infrastructure.Data.DataSeed
                 // Get passwords from configuration
                 var seedPasswords = _configuration.GetSection("SeedUserPasswords");
                 var adminPassword = seedPasswords["Admin"] ?? "Admin123!";
-                var customerPassword = seedPasswords["Customer"] ?? "Customer123!";
-
-                // Seed data in sequence
+                var customerPassword = seedPasswords["Customer"] ?? "Customer123!";                // Seed data in sequence
                 await SeedRolesAsync();
                 await SeedAdminAsync(adminPassword);
                 await SeedCustomersAsync(customerPassword);
                 await SeedProductsAsync();
                 await SeedCartsAsync();
+                await SeedOrdersAsync();
 
                 //await SeedBookingsAndTicketsAsync();
 
@@ -257,8 +256,7 @@ namespace Infrastructure.Data.DataSeed
                     
                     // Map product data to domain entities
                     foreach (var item in productData)
-                    {
-                        var product = new Product
+                    {                        var product = new Product
                         {
                             Name = item.Name,
                             Description = item.Description,
@@ -277,8 +275,8 @@ namespace Infrastructure.Data.DataSeed
                             IsFeatured = item.IsFeatured,
                             IsActive = true,
                             DateCreated = DateTime.UtcNow,
-                            Slug = item.Name.ToLower().Replace(" ", "-"),
-                            SKU = $"SKU-{Guid.NewGuid().ToString().Substring(0, 8).ToUpper()}"
+                            Slug = item.Name.ToLower().Replace(" ", "-").Replace(",", ""),
+                            SKU = $"SKU-{(products.Count + 1):D3}"
                         };
                         
                         products.Add(product);
@@ -494,12 +492,188 @@ namespace Infrastructure.Data.DataSeed
             public string CustomerId { get; set; } = string.Empty;
             public List<CartItemData> CartItems { get; set; } = new List<CartItemData>();
         }
-        
-        private class CartItemData
+          private class CartItemData
         {
             public int ProductId { get; set; }
             public int Quantity { get; set; }
             public decimal PriceAtAddition { get; set; }
+        }
+
+        // Method to seed Order data
+        private async Task SeedOrdersAsync()
+        {
+            _logger.LogInformation("Seeding orders...");
+            
+            if (!await _context.Orders.AnyAsync())
+            {
+                try
+                {
+                    _logger.LogInformation("Reading order data from orders.json");
+                    
+                    // Define the path to the orders.json file
+                    string jsonFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Infrastructure", "Data", "DataSeed", "orders.json");
+                    
+                    // If the file doesn't exist at the expected path, try looking in alternative locations
+                    if (!File.Exists(jsonFilePath))
+                    {
+                        // Try alternative paths
+                        string[] possiblePaths = new[]
+                        {
+                            "orders.json",
+                            Path.Combine("Data", "DataSeed", "orders.json"),
+                            Path.Combine("Infrastructure", "Data", "DataSeed", "orders.json"),
+                            Path.Combine("..", "Infrastructure", "Data", "DataSeed", "orders.json"),
+                            @"e:\iti files\web api\FashionHub\Infrastructure\Data\DataSeed\orders.json",
+                            Path.Combine(Directory.GetCurrentDirectory(), "Infrastructure", "Data", "DataSeed", "orders.json"),
+                            Path.Combine(Directory.GetCurrentDirectory(), "orders.json")
+                        };
+                        
+                        foreach (var path in possiblePaths)
+                        {
+                            _logger.LogInformation("Checking path: {Path}", path);
+                            if (File.Exists(path))
+                            {
+                                jsonFilePath = path;
+                                _logger.LogInformation("Found orders.json at: {Path}", path);
+                                break;
+                            }
+                        }
+                    }
+                    
+                    if (!File.Exists(jsonFilePath))
+                    {
+                        _logger.LogError("Orders JSON file not found in any of the expected locations");
+                        return;
+                    }
+                    
+                    _logger.LogInformation("Reading orders data from file: {FilePath}", jsonFilePath);
+                    
+                    // Read and deserialize the JSON data
+                    string jsonData = await File.ReadAllTextAsync(jsonFilePath);
+                    var orderData = JsonSerializer.Deserialize<List<OrderData>>(jsonData, 
+                        new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    
+                    if (orderData == null || !orderData.Any())
+                    {
+                        _logger.LogWarning("No order data found in JSON file");
+                        return;
+                    }
+                    
+                    _logger.LogInformation("Found {Count} orders in JSON file", orderData.Count);
+                      // Create list to hold all orders
+                    var orders = new List<Order>();
+                    var orderItems = new List<OrderItem>();
+                      // Get all customer IDs from database to match with seed data
+                    var customers = await _context.Customers.Include(c => c.AppUser).ToListAsync();
+                    var products = await _context.Products.ToListAsync();
+                    
+                    if (!customers.Any())
+                    {
+                        _logger.LogWarning("No customers found in database. Cannot seed orders.");
+                        return;
+                    }
+                    
+                    // Map order data to domain entities
+                    foreach (var orderDataItem in orderData)
+                    {
+                        // Find customer by name
+                        var customer = customers.FirstOrDefault(c => c.AppUser.FullName == orderDataItem.CustomerName);
+                        if (customer == null)
+                        {
+                            _logger.LogWarning("Customer with name {CustomerName} not found. Using first available customer.", orderDataItem.CustomerName);
+                            customer = customers.First();
+                        }
+                        
+                        var order = new Order
+                        {
+                            CustomerId = customer.Id,
+                            OrderDate = orderDataItem.OrderDate,
+                            Status = (OrderStatus)orderDataItem.Status,
+                            TotalAmount = orderDataItem.TotalAmount,
+                            OrderNotes = orderDataItem.OrderNotes
+                        };
+                        
+                        orders.Add(order);
+                    }
+                    
+                    // Add all orders first to get their IDs
+                    await _context.Orders.AddRangeAsync(orders);
+                    await _context.SaveChangesAsync();
+                      // Now add order items
+                    for (int i = 0; i < orders.Count; i++)
+                    {
+                        var order = orders[i];
+                        var orderDataItem = orderData[i];
+                        
+                        // Add order items
+                        foreach (var itemData in orderDataItem.OrderItems)
+                        {
+                            // Make sure product exists
+                            var productId = itemData.ProductId;
+                            if (productId <= 0 || !products.Any(p => p.Id == productId))
+                            {
+                                _logger.LogWarning("Product with ID {ProductId} not found. Skipping order item.", productId);
+                                continue;
+                            }
+                            
+                            var orderItem = new OrderItem
+                            {
+                                OrderId = order.Id,
+                                ProductId = productId,
+                                ProductName = itemData.ProductName,
+                                UnitPrice = itemData.UnitPrice,
+                                Quantity = itemData.Quantity,
+                                Subtotal = itemData.Subtotal,
+                                ProductSKU = itemData.ProductSKU,
+                                SelectedSize = itemData.SelectedSize,
+                                SelectedColor = itemData.SelectedColor
+                            };
+                            
+                            orderItems.Add(orderItem);
+                        }
+                    }
+                      // Add all order items in single operation
+                    if (orderItems.Any())
+                    {
+                        await _context.OrderItems.AddRangeAsync(orderItems);
+                    }
+                    
+                    await _context.SaveChangesAsync();
+                    
+                    _logger.LogInformation("Successfully added {OrderCount} orders with {ItemCount} order items to the database", 
+                        orders.Count, orderItems.Count);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error occurred while seeding orders");
+                    throw; // Re-throw the exception to signal the failure
+                }
+            }
+            else
+            {
+                _logger.LogInformation("Orders already exist in database. Skipping order seeding.");
+            }
+        }        // Helper class to deserialize order data from JSON
+        private class OrderData
+        {
+            public string CustomerName { get; set; } = string.Empty;
+            public DateTime OrderDate { get; set; }
+            public int Status { get; set; }
+            public decimal TotalAmount { get; set; }
+            public string OrderNotes { get; set; } = string.Empty;
+            public List<OrderItemData> OrderItems { get; set; } = new List<OrderItemData>();
+        }
+        
+        private class OrderItemData
+        {
+            public int ProductId { get; set; }
+            public string ProductName { get; set; } = string.Empty;
+            public decimal UnitPrice { get; set; }
+            public int Quantity { get; set; }
+            public decimal Subtotal { get; set; }
+            public string ProductSKU { get; set; } = string.Empty;
+            public string SelectedSize { get; set; } = string.Empty;
+            public string SelectedColor { get; set; } = string.Empty;
         }
     }
 }

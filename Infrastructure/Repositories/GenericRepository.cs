@@ -18,9 +18,7 @@ namespace Infrastructure.Repositories
         {
             _context = context;
             _dbSet = context.Set<T>();
-        }
-
-        // Read
+        }        // Read
         public async Task<IEnumerable<T>> GetAllAsync()
         {
             var query = _dbSet.AsQueryable();
@@ -31,7 +29,17 @@ namespace Infrastructure.Repositories
             return await query.ToListAsync();
         }
 
-        public async Task<T> GetByIdAsync(int id)
+        public IQueryable<T> GetAllQueryable()
+        {
+            var query = _dbSet.AsQueryable();
+            if (HasIsDeletedProperty())
+            {
+                query = query.Where(e => EF.Property<bool>(e, "IsDeleted") == false);
+            }
+            return query;
+        }
+
+        public async Task<T?> GetByIdAsync(int id)
         {
             var query = _dbSet.AsQueryable();
             if (HasIsDeletedProperty())
@@ -39,6 +47,16 @@ namespace Infrastructure.Repositories
                 query = query.Where(e => EF.Property<bool>(e, "IsDeleted") == false);
             }
             return await query.FirstOrDefaultAsync(e => EF.Property<int>(e, "Id") == id);
+        }
+
+        public async Task<T?> GetByIdAsync(string id)
+        {
+            var query = _dbSet.AsQueryable();
+            if (HasIsDeletedProperty())
+            {
+                query = query.Where(e => EF.Property<bool>(e, "IsDeleted") == false);
+            }
+            return await query.FirstOrDefaultAsync(e => EF.Property<string>(e, "Id") == id);
         }
 
         // Add

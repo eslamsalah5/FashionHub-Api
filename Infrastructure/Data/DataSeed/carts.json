@@ -11,6 +11,11 @@
         "ProductId": 3,
         "Quantity": 1,
         "PriceAtAddition": 249.99
+      },
+      {
+        "ProductId": 8,
+        "Quantity": 1,
+        "PriceAtAddition": 45.99
       }
     ]
   },
@@ -20,11 +25,16 @@
       {
         "ProductId": 2,
         "Quantity": 1,
-        "PriceAtAddition": 59.99
+        "PriceAtAddition": 49.99
       },
       {
         "ProductId": 5,
-        "Quantity": 3,
+        "Quantity": 1,
+        "PriceAtAddition": 99.99
+      },
+      {
+        "ProductId": 4,
+        "Quantity": 2,
         "PriceAtAddition": 29.99
       }
     ]
@@ -38,9 +48,14 @@
         "PriceAtAddition": 89.99
       },
       {
-        "ProductId": 4,
-        "Quantity": 2,
+        "ProductId": 7,
+        "Quantity": 1,
         "PriceAtAddition": 199.99
+      },
+      {
+        "ProductId": 10,
+        "Quantity": 1,
+        "PriceAtAddition": 49.99
       }
     ]
   },
@@ -53,9 +68,9 @@
         "PriceAtAddition": 79.99
       },
       {
-        "ProductId": 7,
+        "ProductId": 9,
         "Quantity": 1,
-        "PriceAtAddition": 35.99
+        "PriceAtAddition": 29.99
       }
     ]
   }

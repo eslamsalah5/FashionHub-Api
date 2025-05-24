@@ -10,6 +10,7 @@ namespace Domain.Repositories.Interfaces
         IUserRepository Users { get; }
         IProductRepository Products { get; }
         ICartRepository Carts { get; }
+        IOrderRepository Orders { get; }
         IGenericRepository<Admin> Admins { get; }
         IGenericRepository<Customer> Customers { get; }
 

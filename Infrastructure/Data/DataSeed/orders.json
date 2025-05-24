@@ -1,0 +1,226 @@
+[
+  {
+    "CustomerName": "Sara Ahmed",
+    "OrderDate": "2024-11-15T10:30:00",
+    "Status": 4,
+    "TotalAmount": 359.97,
+    "OrderNotes": "Please handle with care",
+    "OrderItems": [
+      {
+        "ProductId": 1,
+        "ProductName": "Elegant Summer Dress",
+        "UnitPrice": 89.99,
+        "Quantity": 2,
+        "Subtotal": 179.98,
+        "ProductSKU": "SKU-001",
+        "SelectedSize": "M",
+        "SelectedColor": "White"
+      },
+      {
+        "ProductId": 6,
+        "ProductName": "Sports Sneakers",
+        "UnitPrice": 79.99,
+        "Quantity": 2,
+        "Subtotal": 159.98,
+        "ProductSKU": "SKU-006",
+        "SelectedSize": "38",
+        "SelectedColor": "White"
+      },
+      {
+        "ProductId": 8,
+        "ProductName": "Leather Wallet",
+        "UnitPrice": 45.99,
+        "Quantity": 1,
+        "Subtotal": 45.99,
+        "ProductSKU": "SKU-008",
+        "SelectedSize": "OneSize",
+        "SelectedColor": "Brown"
+      }
+    ]
+  },
+  {
+    "CustomerName": "Mohamed Ali",
+    "OrderDate": "2024-11-20T14:15:00",
+    "Status": 3,
+    "TotalAmount": 119.97,
+    "OrderNotes": "Leave at the door if not home",
+    "OrderItems": [
+      {
+        "ProductId": 2,
+        "ProductName": "Classic Denim Jeans",
+        "UnitPrice": 49.99,
+        "Quantity": 1,
+        "Subtotal": 49.99,
+        "ProductSKU": "SKU-002",
+        "SelectedSize": "32",
+        "SelectedColor": "Blue"
+      },
+      {
+        "ProductId": 4,
+        "ProductName": "Cotton T-Shirt Pack",
+        "UnitPrice": 29.99,
+        "Quantity": 2,
+        "Subtotal": 59.98,
+        "ProductSKU": "SKU-004",
+        "SelectedSize": "L",
+        "SelectedColor": "White"
+      },
+      {
+        "ProductId": 10,
+        "ProductName": "Business Shirt",
+        "UnitPrice": 49.99,
+        "Quantity": 1,
+        "Subtotal": 49.99,
+        "ProductSKU": "SKU-010",
+        "SelectedSize": "L",
+        "SelectedColor": "Blue"
+      }
+    ]
+  },
+  {
+    "CustomerName": "Nada Mahmoud",
+    "OrderDate": "2024-12-01T09:45:00",
+    "Status": 2,
+    "TotalAmount": 479.97,
+    "OrderNotes": "Gift wrap please",
+    "OrderItems": [
+      {
+        "ProductId": 3,
+        "ProductName": "Formal Suit Set",
+        "UnitPrice": 249.99,
+        "Quantity": 1,
+        "Subtotal": 249.99,
+        "ProductSKU": "SKU-003",
+        "SelectedSize": "42",
+        "SelectedColor": "Black"
+      },
+      {
+        "ProductId": 7,
+        "ProductName": "Evening Gown",
+        "UnitPrice": 199.99,
+        "Quantity": 1,
+        "Subtotal": 199.99,
+        "ProductSKU": "SKU-007",
+        "SelectedSize": "M",
+        "SelectedColor": "Red"
+      },
+      {
+        "ProductId": 9,
+        "ProductName": "Silk Scarf",
+        "UnitPrice": 29.99,
+        "Quantity": 1,
+        "Subtotal": 29.99,
+        "ProductSKU": "SKU-009",
+        "SelectedSize": "OneSize",
+        "SelectedColor": "Blue"
+      }
+    ]
+  },
+  {
+    "CustomerName": "Adel Hussein",
+    "OrderDate": "2024-12-10T16:20:00",
+    "Status": 1,
+    "TotalAmount": 229.97,
+    "OrderNotes": "Call before delivery",
+    "OrderItems": [
+      {
+        "ProductId": 5,
+        "ProductName": "Winter Jacket",
+        "UnitPrice": 99.99,
+        "Quantity": 1,
+        "Subtotal": 99.99,
+        "ProductSKU": "SKU-005",
+        "SelectedSize": "L",
+        "SelectedColor": "Black"
+      },
+      {
+        "ProductId": 6,
+        "ProductName": "Sports Sneakers",
+        "UnitPrice": 79.99,
+        "Quantity": 1,
+        "Subtotal": 79.99,
+        "ProductSKU": "SKU-006",
+        "SelectedSize": "42",
+        "SelectedColor": "Black"
+      },
+      {
+        "ProductId": 10,
+        "ProductName": "Business Shirt",
+        "UnitPrice": 49.99,
+        "Quantity": 1,
+        "Subtotal": 49.99,
+        "ProductSKU": "SKU-010",
+        "SelectedSize": "XL",
+        "SelectedColor": "White"
+      }
+    ]
+  },
+  {
+    "CustomerName": "Sara Ahmed",
+    "OrderDate": "2024-12-15T11:30:00",
+    "Status": 1,
+    "TotalAmount": 319.96,
+    "OrderNotes": "Express delivery preferred",
+    "OrderItems": [
+      {
+        "ProductId": 7,
+        "ProductName": "Evening Gown",
+        "UnitPrice": 199.99,
+        "Quantity": 1,
+        "Subtotal": 199.99,
+        "ProductSKU": "SKU-007",
+        "SelectedSize": "S",
+        "SelectedColor": "Black"
+      },
+      {
+        "ProductId": 2,
+        "ProductName": "Classic Denim Jeans",
+        "UnitPrice": 59.99,
+        "Quantity": 2,
+        "Subtotal": 119.98,
+        "ProductSKU": "SKU-002",
+        "SelectedSize": "30",
+        "SelectedColor": "Blue"
+      }
+    ]
+  },
+  {
+    "CustomerName": "Nada Mahmoud",
+    "OrderDate": "2024-12-18T13:45:00",
+    "Status": 1,
+    "TotalAmount": 165.97,
+    "OrderNotes": "Handle fragile items carefully",
+    "OrderItems": [
+      {
+        "ProductId": 1,
+        "ProductName": "Elegant Summer Dress",
+        "UnitPrice": 89.99,
+        "Quantity": 1,
+        "Subtotal": 89.99,
+        "ProductSKU": "SKU-001",
+        "SelectedSize": "L",
+        "SelectedColor": "Blue"
+      },
+      {
+        "ProductId": 8,
+        "ProductName": "Leather Wallet",
+        "UnitPrice": 45.99,
+        "Quantity": 1,
+        "Subtotal": 45.99,
+        "ProductSKU": "SKU-008",
+        "SelectedSize": "OneSize",
+        "SelectedColor": "Black"
+      },
+      {
+        "ProductId": 4,
+        "ProductName": "Cotton T-Shirt Pack",
+        "UnitPrice": 29.99,
+        "Quantity": 1,
+        "Subtotal": 29.99,
+        "ProductSKU": "SKU-004",
+        "SelectedSize": "M",
+        "SelectedColor": "Black"
+      }
+    ]
+  }
+]

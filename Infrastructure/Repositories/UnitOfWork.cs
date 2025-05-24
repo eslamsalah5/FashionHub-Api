@@ -16,6 +16,7 @@ namespace Infrastructure.Repositories
         private IUserRepository? _userRepository;
         private IProductRepository? _productRepository;
         private ICartRepository? _cartRepository;
+        private IOrderRepository? _orderRepository;
         private IGenericRepository<Admin>? _adminsRepository;
         private IGenericRepository<Customer>? _customersRepository;
 
@@ -36,9 +37,11 @@ namespace Infrastructure.Repositories
 
         public IProductRepository Products =>
             _productRepository ??= new ProductRepository(_context);
-            
-        public ICartRepository Carts =>
+              public ICartRepository Carts =>
             _cartRepository ??= new CartRepository(_context);
+            
+        public IOrderRepository Orders =>
+            _orderRepository ??= new OrderRepository(_context);
         
         #endregion
 

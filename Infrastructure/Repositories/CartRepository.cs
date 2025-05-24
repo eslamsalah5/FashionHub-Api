@@ -22,15 +22,18 @@ namespace Infrastructure.Repositories
                 .Include(c => c.CartItems)
                     .ThenInclude(ci => ci.Product)
                 .FirstOrDefaultAsync();
-        }
-
-        public async Task<Cart?> GetCartWithItemsByIdAsync(int id)
+        }        public async Task<Cart?> GetCartWithItemsByIdAsync(int id)
         {
             return await _context.Carts
                 .Where(c => c.Id == id && !c.IsDeleted)
                 .Include(c => c.CartItems)
                     .ThenInclude(ci => ci.Product)
                 .FirstOrDefaultAsync();
+        }
+        
+        public async Task<Cart?> GetCartWithItemsAsync(int cartId)
+        {
+            return await GetCartWithItemsByIdAsync(cartId);
         }
 
         public async Task<bool> AddItemToCartAsync(int cartId, int productId, int quantity)
