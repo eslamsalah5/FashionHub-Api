@@ -16,7 +16,7 @@ namespace Infrastructure.Repositories
 
         public async Task<IEnumerable<Order>> GetCustomerOrdersAsync(string customerId)
         {
-            return await _context.Set<Order>()
+            return await _dbSet
                 .Include(o => o.Customer)
                     .ThenInclude(c => c.AppUser)
                 .Include(o => o.OrderItems)
@@ -27,7 +27,7 @@ namespace Infrastructure.Repositories
 
         public async Task<Order?> GetOrderWithItemsAsync(int orderId)
         {
-            return await _context.Set<Order>()
+            return await _dbSet
                 .Include(o => o.Customer)
                     .ThenInclude(c => c.AppUser)
                 .Include(o => o.OrderItems)
@@ -38,7 +38,7 @@ namespace Infrastructure.Repositories
         public async Task<Order?> CreateOrderFromCartAsync(int cartId)
         {
             // Get the cart with items
-            var cart = await _context.Set<Cart>()
+            var cart = await _context.Carts
                 .Include(c => c.CartItems)
                 .ThenInclude(i => i.Product)
                 .FirstOrDefaultAsync(c => c.Id == cartId && !c.IsDeleted);
@@ -77,7 +77,7 @@ namespace Infrastructure.Repositories
             }
 
             // Add the new order to context
-            await _context.Set<Order>().AddAsync(order);
+            await _context.Orders.AddAsync(order);
 
             // Clear the cart items (optional, depending on business logic)
             _context.Set<CartItem>().RemoveRange(cart.CartItems);

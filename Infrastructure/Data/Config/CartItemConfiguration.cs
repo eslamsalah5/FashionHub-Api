@@ -22,10 +22,15 @@ namespace Infrastructure.Data.Config
                 
             builder.Property(ci => ci.Quantity)
                 .IsRequired();
-                
-            builder.Property(ci => ci.PriceAtAddition)
+                  builder.Property(ci => ci.PriceAtAddition)
                 .HasColumnType("decimal(18,2)")
                 .IsRequired();
+                
+            builder.Property(ci => ci.SelectedSize)
+                .HasMaxLength(50);
+                
+            builder.Property(ci => ci.SelectedColor)
+                .HasMaxLength(50);
         }
     }
 }

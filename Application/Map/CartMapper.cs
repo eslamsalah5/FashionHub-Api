@@ -30,15 +30,16 @@ namespace Application.Map
             {
                 return new CartItemDto();
             }
-            
-            return new CartItemDto
+              return new CartItemDto
             {
                 Id = cartItem.Id,
                 ProductId = cartItem.ProductId,
                 ProductName = cartItem.Product?.Name ?? string.Empty,
                 ProductImageUrl = cartItem.Product?.MainImageUrl ?? string.Empty,
                 Quantity = cartItem.Quantity,
-                UnitPrice = cartItem.PriceAtAddition
+                UnitPrice = cartItem.PriceAtAddition,
+                SelectedSize = cartItem.SelectedSize,
+                SelectedColor = cartItem.SelectedColor
             };
         }
     }

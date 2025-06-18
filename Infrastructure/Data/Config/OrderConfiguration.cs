@@ -27,12 +27,17 @@ namespace Infrastructure.Data.Config
             builder.HasOne(o => o.Customer)
                 .WithMany(c => c.Orders)
                 .HasForeignKey(o => o.CustomerId)
-                .OnDelete(DeleteBehavior.Cascade);
-                  // Configure relationship with OrderItems
+                .OnDelete(DeleteBehavior.Cascade);            // Configure relationship with OrderItems
             builder.HasMany(o => o.OrderItems)
                 .WithOne(oi => oi.Order)
                 .HasForeignKey(oi => oi.OrderId)
                 .OnDelete(DeleteBehavior.Cascade);
+                
+            // Configure relationship with Payment (optional)
+            builder.HasOne(o => o.Payment)
+                .WithMany()
+                .HasForeignKey("PaymentId")
+                .OnDelete(DeleteBehavior.SetNull);
         }
     }
 }

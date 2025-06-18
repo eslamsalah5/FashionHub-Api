@@ -38,12 +38,12 @@ namespace Infrastructure.Repositories
 
         public async Task<Admin?> GetAdminByUserIdAsync(string userId)
         {
-            return await _context.Set<Admin>()
+            return await _context.Admins
                 .FirstOrDefaultAsync(a => a.Id == userId);
         }        public async Task<Customer?> GetCustomerByUserIdAsync(string userId)
         {
             // Add logging or more detailed error handling
-            var customer = await _context.Set<Customer>()
+            var customer = await _context.Customers
                 .Include(c => c.AppUser)
                 .FirstOrDefaultAsync(c => c.Id == userId);
             

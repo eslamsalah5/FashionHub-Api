@@ -79,10 +79,8 @@ namespace Application.Services
                 }
 
                 // Get user's cart or create a new one (moved to repository)
-                var cart = await _unitOfWork.Carts.GetOrCreateCartAsync(customer.Id);
-
-                // Add item to cart
-                await _unitOfWork.Carts.AddItemToCartAsync(cart.Id, request.ProductId, request.Quantity);
+                var cart = await _unitOfWork.Carts.GetOrCreateCartAsync(customer.Id);                // Add item to cart
+                await _unitOfWork.Carts.AddItemToCartAsync(cart.Id, request.ProductId, request.Quantity, request.SelectedSize, request.SelectedColor);
                 
                 // Save changes
                 await _unitOfWork.SaveChangesAsync();

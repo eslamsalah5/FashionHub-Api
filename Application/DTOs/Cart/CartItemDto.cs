@@ -9,5 +9,7 @@ namespace Application.DTOs.Cart
         public int Quantity { get; set; }
         public decimal UnitPrice { get; set; }
         public decimal TotalPrice => UnitPrice * Quantity;
+        public string SelectedSize { get; set; } = string.Empty;
+        public string SelectedColor { get; set; } = string.Empty;
     }
 }

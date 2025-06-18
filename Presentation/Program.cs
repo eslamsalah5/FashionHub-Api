@@ -35,17 +35,17 @@ namespace Presentation
 
             // Configure JWT services
             builder.Services.AddJwtServices(builder.Configuration);
-          
               // Configure Auth services
             builder.Services.AddAuthService();
               // Configure Product services
             builder.Services.AddProductService();
               // Configure Cart services
             builder.Services.AddCartService();
-            
-            // Configure Order services
+              // Configure Order services
             builder.Services.AddOrderService();
-            
+              // Configure Payment services
+            builder.Services.AddPaymentService(builder.Configuration);
+                        
             // Configure Repository services
             builder.Services.AddRepositoryServices();
             

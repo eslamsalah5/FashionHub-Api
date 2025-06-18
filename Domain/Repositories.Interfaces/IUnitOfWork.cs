@@ -3,14 +3,14 @@ using Domain.Entities;
 using System.Threading.Tasks;
 
 namespace Domain.Repositories.Interfaces
-{
-    public interface IUnitOfWork
+{    public interface IUnitOfWork
     {   
         // Custom Repositories
         IUserRepository Users { get; }
         IProductRepository Products { get; }
         ICartRepository Carts { get; }
         IOrderRepository Orders { get; }
+        IPaymentRepository Payments { get; }
         IGenericRepository<Admin> Admins { get; }
         IGenericRepository<Customer> Customers { get; }
 

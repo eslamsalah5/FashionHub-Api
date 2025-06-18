@@ -34,13 +34,12 @@ namespace Infrastructure.Repositories
         public async Task<Cart?> GetCartWithItemsAsync(int cartId)
         {
             return await GetCartWithItemsByIdAsync(cartId);
-        }
-
-        public async Task<bool> AddItemToCartAsync(int cartId, int productId, int quantity)
+        }        public async Task<bool> AddItemToCartAsync(int cartId, int productId, int quantity, string selectedSize = "", string selectedColor = "")
         {
-            // Check if the product already exists in the cart
-            var existingCartItem = await _context.Set<CartItem>()
-                .FirstOrDefaultAsync(ci => ci.CartId == cartId && ci.ProductId == productId);
+            // Check if the product already exists in the cart with same size and color
+            var existingCartItem = await _context.CartItems
+                .FirstOrDefaultAsync(ci => ci.CartId == cartId && ci.ProductId == productId 
+                    && ci.SelectedSize == selectedSize && ci.SelectedColor == selectedColor);
 
             if (existingCartItem != null)
             {
@@ -61,10 +60,12 @@ namespace Infrastructure.Repositories
                     Quantity = quantity,
                     PriceAtAddition = product.IsOnSale && product.DiscountPrice.HasValue 
                         ? product.DiscountPrice.Value 
-                        : product.Price
+                        : product.Price,
+                    SelectedSize = selectedSize,
+                    SelectedColor = selectedColor
                 };
 
-                await _context.Set<CartItem>().AddAsync(newCartItem);
+                await _context.CartItems.AddAsync(newCartItem);
             }
 
             // Update the cart's ModifiedAt timestamp
@@ -77,12 +78,12 @@ namespace Infrastructure.Repositories
 
         public async Task<bool> UpdateCartItemQuantityAsync(int cartItemId, int quantity)
         {
-            var cartItem = await _context.Set<CartItem>().FindAsync(cartItemId);
+            var cartItem = await _context.CartItems.FindAsync(cartItemId);
             if (cartItem == null) return false;
 
             if (quantity <= 0)
             {
-                _context.Set<CartItem>().Remove(cartItem);
+                _context.CartItems.Remove(cartItem);
             }
             else
             {
@@ -99,7 +100,7 @@ namespace Infrastructure.Repositories
 
         public async Task<bool> RemoveCartItemAsync(int cartItemId)
         {
-            var cartItem = await _context.Set<CartItem>().FindAsync(cartItemId);
+            var cartItem = await _context.CartItems.FindAsync(cartItemId);
             if (cartItem == null) return false;
 
             // Update the cart's ModifiedAt timestamp
@@ -108,19 +109,19 @@ namespace Infrastructure.Repositories
             
             cart.ModifiedAt = DateTime.UtcNow;
 
-            _context.Set<CartItem>().Remove(cartItem);
+            _context.CartItems.Remove(cartItem);
             return true;
         }
 
         public async Task<bool> ClearCartAsync(int cartId)
         {
-            var cartItems = await _context.Set<CartItem>()
+            var cartItems = await _context.CartItems
                 .Where(ci => ci.CartId == cartId)
                 .ToListAsync();
 
             if (!cartItems.Any()) return false;
 
-            _context.Set<CartItem>().RemoveRange(cartItems);
+            _context.CartItems.RemoveRange(cartItems);
             
             // Update the cart's ModifiedAt timestamp
             var cart = await _context.Carts.FindAsync(cartId);
@@ -137,7 +138,7 @@ namespace Infrastructure.Repositories
 
         public async Task<CartItem?> GetCartItemByIdAsync(int cartItemId)
         {
-            return await _context.Set<CartItem>()
+            return await _context.CartItems
                 .Include(ci => ci.Product)
                 .FirstOrDefaultAsync(ci => ci.Id == cartItemId);
         }
@@ -166,7 +167,7 @@ namespace Infrastructure.Repositories
 
         public async Task<bool> IncreaseCartItemQuantityAsync(int cartItemId)
         {
-            var cartItem = await _context.Set<CartItem>()
+            var cartItem = await _context.CartItems
                 .Include(ci => ci.Product)
                 .FirstOrDefaultAsync(ci => ci.Id == cartItemId);
 
@@ -190,7 +191,7 @@ namespace Infrastructure.Repositories
 
         public async Task<bool> DecreaseCartItemQuantityAsync(int cartItemId)
         {
-            var cartItem = await _context.Set<CartItem>()
+            var cartItem = await _context.CartItems
                 .FirstOrDefaultAsync(ci => ci.Id == cartItemId);
 
             if (cartItem == null)

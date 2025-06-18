@@ -9,7 +9,7 @@ namespace Domain.Repositories.Interfaces
         Task<Cart?> GetCartWithItemsByCustomerIdAsync(string customerId);
         Task<Cart?> GetCartWithItemsByIdAsync(int id);
         Task<Cart?> GetCartWithItemsAsync(int cartId);
-        Task<bool> AddItemToCartAsync(int cartId, int productId, int quantity);
+        Task<bool> AddItemToCartAsync(int cartId, int productId, int quantity, string selectedSize = "", string selectedColor = "");
         Task<bool> UpdateCartItemQuantityAsync(int cartItemId, int quantity);
         Task<bool> RemoveCartItemAsync(int cartItemId);
         Task<bool> ClearCartAsync(int cartId);
