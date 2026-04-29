@@ -11,10 +11,10 @@ namespace Infrastructure.Repositories
         {
         }
 
-        public async Task<Payment?> GetByPaymentIntentIdAsync(string paymentIntentId)
+        public async Task<Payment?> GetByGatewayPaymentIdAsync(string gatewayPaymentId)
         {
             return await _dbSet
-                .FirstOrDefaultAsync(p => p.StripePaymentIntentId == paymentIntentId);
+                .FirstOrDefaultAsync(p => p.GatewayPaymentId == gatewayPaymentId);
         }
     }
 }

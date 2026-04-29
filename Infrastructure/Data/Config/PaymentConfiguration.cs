@@ -9,24 +9,28 @@ namespace Infrastructure.Data.Config
         public void Configure(EntityTypeBuilder<Payment> builder)
         {
             builder.HasKey(p => p.Id);
-            
+
             builder.Property(p => p.Amount)
                 .IsRequired()
                 .HasColumnType("decimal(18,2)");
-                
-            builder.Property(p => p.StripePaymentIntentId)
+
+            builder.Property(p => p.GatewayPaymentId)
                 .IsRequired()
                 .HasMaxLength(255);
-                
+
+            builder.Property(p => p.GatewayName)
+                .IsRequired()
+                .HasMaxLength(50);
+
             builder.Property(p => p.Status)
                 .IsRequired()
                 .HasMaxLength(50);
-                
+
             builder.Property(p => p.PaymentDate)
                 .IsRequired();
-                
-            // Create unique index on StripePaymentIntentId
-            builder.HasIndex(p => p.StripePaymentIntentId)
+
+            // Unique index — one Payment record per gateway session
+            builder.HasIndex(p => p.GatewayPaymentId)
                 .IsUnique();
         }
     }

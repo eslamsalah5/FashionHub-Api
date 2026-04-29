@@ -144,3 +144,6 @@ Thumbs.db
 API_ENDPOINTS_PAYMENT.md
 PAYMENT_CHANGES_SUMMARY.md
 STRIPE_WEBHOOK_SETUP.md
+fashionhub.runasp.net-WebDeploy.publishSettings
+Presentation/.config/dotnet-tools.json
+Presentation/Properties/PublishProfiles/site66151-WebDeploy.pubxml

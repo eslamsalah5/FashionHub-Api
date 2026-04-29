@@ -1,15 +1,23 @@
-using System;
-
 namespace Domain.Entities
 {
     public class Payment : BaseEntity<int>
     {
         public decimal Amount { get; set; }
-        
-        public string StripePaymentIntentId { get; set; } = string.Empty;
-        
+
+        /// <summary>
+        /// The gateway's own ID for this payment session (e.g. Stripe PaymentIntent ID).
+        /// Used by the webhook handler to look up this record.
+        /// </summary>
+        public string GatewayPaymentId { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Which gateway processed this payment (e.g. "stripe", "paypal").
+        /// Allows the webhook router to dispatch to the correct gateway.
+        /// </summary>
+        public string GatewayName { get; set; } = string.Empty;
+
         public string Status { get; set; } = "pending"; // pending, succeeded, failed
-        
+
         public DateTime PaymentDate { get; set; } = DateTime.UtcNow;
 
         /// <summary>

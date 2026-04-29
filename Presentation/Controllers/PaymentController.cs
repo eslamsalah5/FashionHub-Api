@@ -2,7 +2,6 @@ using Application.DTOs.Payment;
 using Application.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Stripe;
 using System.Security.Claims;
 
 namespace Presentation.Controllers
@@ -12,23 +11,21 @@ namespace Presentation.Controllers
     public class PaymentController : ControllerBase
     {
         private readonly IPaymentService _paymentService;
-        private readonly IConfiguration _configuration;
+        private readonly IEnumerable<IPaymentGateway> _gateways;
         private readonly ILogger<PaymentController> _logger;
 
         public PaymentController(
             IPaymentService paymentService,
-            IConfiguration configuration,
+            IEnumerable<IPaymentGateway> gateways,
             ILogger<PaymentController> logger)
         {
-            _paymentService    = paymentService;
-            _configuration     = configuration;
-            _logger            = logger;
+            _paymentService = paymentService;
+            _gateways       = gateways;
+            _logger         = logger;
         }
 
         // ─────────────────────────────────────────────────────────────
         // POST api/payment/create-payment-intent
-        // Authenticated customer calls this to start a payment session.
-        // Returns clientSecret that Stripe.js uses on the frontend.
         // ─────────────────────────────────────────────────────────────
         [HttpPost("create-payment-intent")]
         [Authorize]
@@ -44,79 +41,100 @@ namespace Presentation.Controllers
         }
 
         // ─────────────────────────────────────────────────────────────
-        // POST api/payment/webhook
-        // Stripe calls this endpoint — NOT the client.
-        // Must be [AllowAnonymous] and must read the raw body for signature verification.
+        // POST api/payment/webhook/{gateway}
+        // Each gateway has its own webhook endpoint so Stripe, PayPal, etc.
+        // can each be configured with their own URL in the gateway dashboard.
+        // e.g. POST /api/payment/webhook/stripe
+        //      POST /api/payment/webhook/paypal
         // ─────────────────────────────────────────────────────────────
-        [HttpPost("webhook")]
+        [HttpPost("webhook/{gateway}")]
         [AllowAnonymous]
-        public async Task<IActionResult> StripeWebhook()
+        public async Task<IActionResult> Webhook([FromRoute] string gateway)
         {
-            var webhookSecret = _configuration["Stripe:WebhookSecret"];
+            // Resolve the gateway
+            var paymentGateway = _gateways.FirstOrDefault(
+                g => g.GatewayName.Equals(gateway, StringComparison.OrdinalIgnoreCase));
 
-            if (string.IsNullOrEmpty(webhookSecret) || webhookSecret.StartsWith("whsec_your"))
+            if (paymentGateway == null)
             {
-                _logger.LogError("Stripe WebhookSecret is not configured.");
-                return StatusCode(500, "Webhook secret not configured");
+                _logger.LogWarning("Webhook received for unknown gateway: {Gateway}", gateway);
+                return BadRequest($"Unknown payment gateway: {gateway}");
             }
 
-            // Read raw body — required for Stripe signature verification
-            string json;
+            // Read raw body — required for signature verification
+            string rawBody;
             using (var reader = new StreamReader(HttpContext.Request.Body))
             {
-                json = await reader.ReadToEndAsync();
+                rawBody = await reader.ReadToEndAsync();
             }
 
-            Event stripeEvent;
-            try
-            {
-                stripeEvent = EventUtility.ConstructEvent(
-                    json,
-                    Request.Headers["Stripe-Signature"],
-                    webhookSecret
-                );
-            }
-            catch (StripeException ex)
-            {
-                _logger.LogWarning("Stripe webhook signature verification failed: {Message}", ex.Message);
-                return BadRequest($"Webhook signature verification failed: {ex.Message}");
-            }
+            // Delegate signature verification + event parsing to the gateway
+            // Convert IHeaderDictionary → IDictionary<string, string> for the gateway interface
+            var headers = Request.Headers
+                .Where(h => h.Value.Count > 0)
+                .ToDictionary(
+                    h => h.Key,
+                    h => h.Value.ToString(),
+                    StringComparer.OrdinalIgnoreCase);
 
-            _logger.LogInformation("Stripe webhook received: {EventType} | {EventId}", stripeEvent.Type, stripeEvent.Id);
+            var parseResult = await paymentGateway.ParseWebhookAsync(rawBody, headers);
 
-            // Stripe event types are string constants like "payment_intent.succeeded"
-            switch (stripeEvent.Type)
+            if (!parseResult.IsSuccess)
             {
-                case "payment_intent.succeeded":
+                var error = string.Join(", ", parseResult.Errors);
+
+                if (error.Contains("not configured"))
                 {
-                    var paymentIntent = stripeEvent.Data.Object as PaymentIntent;
-                    if (paymentIntent == null) break;
+                    _logger.LogError("{Gateway} webhook secret is not configured.", gateway);
+                    return StatusCode(500, parseResult.Errors.First());
+                }
 
-                    var result = await _paymentService.HandlePaymentSucceededAsync(paymentIntent.Id);
+                _logger.LogWarning("{Gateway} webhook verification failed: {Error}", gateway, error);
+                return BadRequest(error);
+            }
+
+            var webhookEvent = parseResult.Data!;
+            _logger.LogInformation(
+                "{Gateway} webhook received: {EventType} | {EventId}",
+                gateway, webhookEvent.EventType, webhookEvent.EventId);
+
+            // Dispatch to the correct handler based on the normalised event type
+            switch (webhookEvent.EventType)
+            {
+                case GatewayEventTypes.PaymentSucceeded:
+                {
+                    var result = await _paymentService.HandlePaymentSucceededAsync(
+                        webhookEvent.GatewayPaymentId);
+
                     if (!result.IsSuccess)
-                        _logger.LogError("HandlePaymentSucceeded failed for {Id}: {Errors}", paymentIntent.Id, string.Join(", ", result.Errors));
-
+                        _logger.LogError(
+                            "HandlePaymentSucceeded failed for {Id}: {Errors}",
+                            webhookEvent.GatewayPaymentId,
+                            string.Join(", ", result.Errors));
                     break;
                 }
 
-                case "payment_intent.payment_failed":
+                case GatewayEventTypes.PaymentFailed:
                 {
-                    var paymentIntent = stripeEvent.Data.Object as PaymentIntent;
-                    if (paymentIntent == null) break;
+                    var result = await _paymentService.HandlePaymentFailedAsync(
+                        webhookEvent.GatewayPaymentId);
 
-                    var result = await _paymentService.HandlePaymentFailedAsync(paymentIntent.Id);
                     if (!result.IsSuccess)
-                        _logger.LogError("HandlePaymentFailed failed for {Id}: {Errors}", paymentIntent.Id, string.Join(", ", result.Errors));
-
+                        _logger.LogError(
+                            "HandlePaymentFailed failed for {Id}: {Errors}",
+                            webhookEvent.GatewayPaymentId,
+                            string.Join(", ", result.Errors));
                     break;
                 }
 
                 default:
-                    _logger.LogInformation("Unhandled Stripe event type: {EventType}", stripeEvent.Type);
+                    _logger.LogInformation(
+                        "Unhandled {Gateway} event type: {EventType}",
+                        gateway, webhookEvent.EventType);
                     break;
             }
 
-            // Always return 200 to Stripe — otherwise it will keep retrying
+            // Always return 200 — prevents the gateway from retrying
             return Ok();
         }
     }

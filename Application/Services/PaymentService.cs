@@ -4,90 +4,78 @@ using Application.Services.Interfaces;
 using Domain.Entities;
 using Domain.Enums;
 using Domain.Repositories.Interfaces;
-using Stripe;
 
 namespace Application.Services
 {
     public class PaymentService : IPaymentService
     {
         private readonly IUnitOfWork _unitOfWork;
-        private readonly PaymentIntentService _paymentIntentService;
+        private readonly IEnumerable<IPaymentGateway> _gateways;
 
-        public PaymentService(IUnitOfWork unitOfWork)
+        public PaymentService(IUnitOfWork unitOfWork, IEnumerable<IPaymentGateway> gateways)
         {
             _unitOfWork = unitOfWork;
-            _paymentIntentService = new PaymentIntentService();
+            _gateways   = gateways;
         }
 
         // ─────────────────────────────────────────────────────────────
-        // Step 1 – Client calls this to get a clientSecret for Stripe.js
+        // Step 1 – Client calls this to start a payment session.
+        // The gateway is chosen by the client (dto.Gateway).
         // ─────────────────────────────────────────────────────────────
         public async Task<ServiceResult<PaymentIntentResponseDto>> CreatePaymentIntentAsync(
             CreatePaymentIntentDto dto, string customerId)
         {
-            try
+            // Resolve the requested gateway
+            var gateway = _gateways.FirstOrDefault(
+                g => g.GatewayName.Equals(dto.Gateway, StringComparison.OrdinalIgnoreCase));
+
+            if (gateway == null)
+                return ServiceResult<PaymentIntentResponseDto>.Failure(
+                    $"Payment gateway '{dto.Gateway}' is not supported.");
+
+            // Validate cart
+            var cart = await _unitOfWork.Carts.GetCartWithItemsByCustomerIdAsync(customerId);
+            if (cart == null)
+                return ServiceResult<PaymentIntentResponseDto>.Failure("Cart not found");
+
+            if (!cart.CartItems.Any())
+                return ServiceResult<PaymentIntentResponseDto>.Failure("Cart is empty");
+
+            decimal totalAmount = cart.CartItems.Sum(ci => ci.Quantity * ci.PriceAtAddition);
+
+            // Delegate to the chosen gateway
+            var sessionResult = await gateway.CreateSessionAsync(totalAmount, "usd", customerId);
+            if (!sessionResult.IsSuccess)
+                return ServiceResult<PaymentIntentResponseDto>.Failure(sessionResult.Errors);
+
+            // Persist a pending payment record
+            var payment = new Payment
             {
-                var cart = await _unitOfWork.Carts.GetCartWithItemsByCustomerIdAsync(customerId);
-                if (cart == null)
-                    return ServiceResult<PaymentIntentResponseDto>.Failure("Cart not found");
+                Amount           = totalAmount,
+                GatewayPaymentId = sessionResult.Data!.GatewayPaymentId,
+                GatewayName      = gateway.GatewayName,
+                Status           = "pending",
+                CustomerId       = customerId
+            };
 
-                if (!cart.CartItems.Any())
-                    return ServiceResult<PaymentIntentResponseDto>.Failure("Cart is empty");
+            await _unitOfWork.Payments.AddAsync(payment);
+            await _unitOfWork.SaveChangesAsync();
 
-                decimal totalAmount = cart.CartItems.Sum(ci => ci.Quantity * ci.PriceAtAddition);
-
-                var options = new PaymentIntentCreateOptions
-                {
-                    Amount = (long)(totalAmount * 100), // Stripe works in cents
-                    Currency = "usd",
-                    PaymentMethodTypes = new List<string> { "card" },
-                    // Store customerId in Stripe metadata so we can cross-check in webhook
-                    Metadata = new Dictionary<string, string>
-                    {
-                        { "customerId", customerId }
-                    }
-                };
-
-                var paymentIntent = await _paymentIntentService.CreateAsync(options);
-
-                // Persist a pending payment record — includes customerId so the
-                // webhook handler can create the order without trusting the client.
-                var payment = new Payment
-                {
-                    Amount        = totalAmount,
-                    StripePaymentIntentId = paymentIntent.Id,
-                    Status        = "pending",
-                    CustomerId    = customerId
-                };
-
-                await _unitOfWork.Payments.AddAsync(payment);
-                await _unitOfWork.SaveChangesAsync();
-
-                return ServiceResult<PaymentIntentResponseDto>.Success(new PaymentIntentResponseDto
-                {
-                    ClientSecret = paymentIntent.ClientSecret,
-                    Amount       = totalAmount
-                });
-            }
-            catch (StripeException ex)
+            return ServiceResult<PaymentIntentResponseDto>.Success(new PaymentIntentResponseDto
             {
-                return ServiceResult<PaymentIntentResponseDto>.Failure($"Stripe error: {ex.StripeError?.Message ?? ex.Message}");
-            }
-            catch (Exception ex)
-            {
-                return ServiceResult<PaymentIntentResponseDto>.Failure($"Error creating payment intent: {ex.Message}");
-            }
+                ClientSecret = sessionResult.Data.ClientSecret,
+                Amount       = totalAmount
+            });
         }
 
         // ─────────────────────────────────────────────────────────────
-        // Step 2 – Called ONLY by the Stripe webhook (payment_intent.succeeded)
-        // The client never calls this directly.
+        // Step 2 – Called by the webhook handler when payment succeeds.
         // ─────────────────────────────────────────────────────────────
-        public async Task<ServiceResult<int>> HandlePaymentSucceededAsync(string paymentIntentId)
+        public async Task<ServiceResult<int>> HandlePaymentSucceededAsync(string gatewayPaymentId)
         {
             try
             {
-                var payment = await _unitOfWork.Payments.GetByPaymentIntentIdAsync(paymentIntentId);
+                var payment = await _unitOfWork.Payments.GetByGatewayPaymentIdAsync(gatewayPaymentId);
                 if (payment == null)
                     return ServiceResult<int>.Failure("Payment record not found");
 
@@ -114,17 +102,16 @@ namespace Application.Services
                 {
                     order.OrderItems.Add(new OrderItem
                     {
-                        ProductId    = cartItem.ProductId,
-                        ProductName  = cartItem.Product.Name,
-                        ProductSKU   = cartItem.Product.SKU,
-                        UnitPrice    = cartItem.PriceAtAddition,
-                        Quantity     = cartItem.Quantity,
-                        Subtotal     = cartItem.Quantity * cartItem.PriceAtAddition,
+                        ProductId     = cartItem.ProductId,
+                        ProductName   = cartItem.Product.Name,
+                        ProductSKU    = cartItem.Product.SKU,
+                        UnitPrice     = cartItem.PriceAtAddition,
+                        Quantity      = cartItem.Quantity,
+                        Subtotal      = cartItem.Quantity * cartItem.PriceAtAddition,
                         SelectedSize  = cartItem.SelectedSize,
                         SelectedColor = cartItem.SelectedColor
                     });
 
-                    // Deduct stock
                     cartItem.Product.StockQuantity -= cartItem.Quantity;
                 }
 
@@ -141,13 +128,13 @@ namespace Application.Services
         }
 
         // ─────────────────────────────────────────────────────────────
-        // Step 3 – Called ONLY by the Stripe webhook (payment_intent.payment_failed)
+        // Step 3 – Called by the webhook handler when payment fails.
         // ─────────────────────────────────────────────────────────────
-        public async Task<ServiceResult<bool>> HandlePaymentFailedAsync(string paymentIntentId)
+        public async Task<ServiceResult<bool>> HandlePaymentFailedAsync(string gatewayPaymentId)
         {
             try
             {
-                var payment = await _unitOfWork.Payments.GetByPaymentIntentIdAsync(paymentIntentId);
+                var payment = await _unitOfWork.Payments.GetByGatewayPaymentIdAsync(gatewayPaymentId);
                 if (payment == null)
                     return ServiceResult<bool>.Failure("Payment record not found");
 
