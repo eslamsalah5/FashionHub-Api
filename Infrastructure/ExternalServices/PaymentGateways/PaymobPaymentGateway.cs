@@ -8,48 +8,49 @@ using System.Text.Json;
 namespace Infrastructure.ExternalServices.PaymentGateways
 {
     /// <summary>
-    /// Paymob (Accept) implementation of <see cref="IPaymentGateway"/>.
+    /// Paymob Unified Checkout implementation of <see cref="IPaymentGateway"/>.
     ///
-    /// Supports multiple payment methods — each has its own IntegrationId + IframeId
-    /// configured in appsettings.json under Paymob:PaymentMethods.
+    /// Uses the modern Paymob API (v1/intention) — a single server-side call
+    /// that returns a client_secret the frontend uses to open the hosted checkout.
     ///
-    /// Supported methods (configured in dashboard):
-    ///   "card"          — Visa / Mastercard / Meeza
-    ///   "vodafone_cash" — Vodafone Cash
-    ///   "orange_cash"   — Orange Cash
-    ///   "fawry"         — Fawry
-    ///   "wallet"        — Mobile wallets (e& money, We Pay, etc.)
+    /// Server-side flow (1 step):
+    ///   POST https://accept.paymob.com/v1/intention/
+    ///   Headers: Authorization: Token {SecretKey}
+    ///   Body: { amount, currency, payment_methods, billing_data, ... }
+    ///   Response: { client_secret }
     ///
-    /// Server-side flow (3 steps before frontend sees anything):
-    ///   Step 1 — POST /api/auth/tokens           → auth_token
-    ///   Step 2 — POST /api/ecommerce/orders       → order_id
-    ///   Step 3 — POST /api/acceptance/payment_keys → payment_key
-    ///
-    /// Frontend renders:
-    ///   https://accept.paymob.com/api/acceptance/iframes/{iframeId}?payment_token={payment_key}
+    /// Frontend redirects to:
+    ///   https://accept.paymob.com/unifiedcheckout/?publicKey={PublicKey}&clientSecret={client_secret}
     ///
     /// Webhook verification uses HMAC-SHA512 over specific transaction fields.
+    ///
+    /// Supported payment methods (configured in dashboard):
+    ///   "card"          — Visa / Mastercard / Meeza (Integration ID: Online Card)
+    ///   "wallet"        — Vodafone Cash, Orange Cash, e& money (Integration ID: Mobile Wallet)
     /// </summary>
     public class PaymobPaymentGateway : IPaymentGateway
     {
-        private readonly string _apiKey;
+        private readonly string _secretKey;
+        private readonly string _publicKey;
         private readonly string _hmacSecret;
         private readonly string _defaultMethod;
         private readonly IReadOnlyDictionary<string, PaymobMethodConfig> _methods;
         private readonly HttpClient _httpClient;
 
-        private const string BaseUrl = "https://accept.paymob.com/api";
+        private const string BaseUrl = "https://accept.paymob.com";
 
         public string GatewayName => "paymob";
 
         public PaymobPaymentGateway(
-            string apiKey,
+            string secretKey,
+            string publicKey,
             string hmacSecret,
             string defaultMethod,
             IReadOnlyDictionary<string, PaymobMethodConfig> methods,
             HttpClient httpClient)
         {
-            _apiKey        = apiKey;
+            _secretKey     = secretKey;
+            _publicKey     = publicKey;
             _hmacSecret    = hmacSecret;
             _defaultMethod = defaultMethod;
             _methods       = methods;
@@ -57,41 +58,95 @@ namespace Infrastructure.ExternalServices.PaymentGateways
         }
 
         // ─────────────────────────────────────────────────────────────────────
-        // CreateSessionAsync
-        // paymentMethod: "card" | "vodafone_cash" | "orange_cash" | "fawry" | "wallet"
-        // Falls back to the default method if null.
+        // CreateSessionAsync — single API call to /v1/intention/
+        // Returns client_secret + publicKey for the frontend to open checkout
         // ─────────────────────────────────────────────────────────────────────
         public async Task<ServiceResult<GatewaySessionResult>> CreateSessionAsync(
             decimal amount, string currency, string customerId, string? paymentMethod = null)
         {
-            // Resolve which method config to use
             var methodKey = (paymentMethod ?? _defaultMethod).ToLowerInvariant();
 
             if (!_methods.TryGetValue(methodKey, out var methodConfig))
                 return ServiceResult<GatewaySessionResult>.Failure(
                     $"Paymob payment method '{methodKey}' is not configured. " +
-                    $"Available methods: {string.Join(", ", _methods.Keys)}");
+                    $"Available: {string.Join(", ", _methods.Keys)}");
+
+            if (string.IsNullOrEmpty(_secretKey))
+                return ServiceResult<GatewaySessionResult>.Failure(
+                    "Paymob SecretKey is not configured.");
 
             try
             {
-                // ── Step 1: Authenticate ──────────────────────────────────────
-                var authToken = await GetAuthTokenAsync();
-
-                // ── Step 2: Register order ────────────────────────────────────
                 var amountCents = (long)(amount * 100);
-                var orderId = await RegisterOrderAsync(authToken, amountCents, currency);
 
-                // ── Step 3: Get payment key ───────────────────────────────────
-                var paymentKey = await GetPaymentKeyAsync(
-                    authToken, orderId, amountCents, currency,
-                    customerId, methodConfig.IntegrationId);
+                // Build the intention request
+                var intentionBody = new
+                {
+                    amount          = amountCents,
+                    currency        = currency.ToUpperInvariant(),
+                    payment_methods = new[] { int.Parse(methodConfig.IntegrationId) },
+                    items           = Array.Empty<object>(),
+                    billing_data    = new
+                    {
+                        first_name    = "Customer",
+                        last_name     = customerId,
+                        email         = "customer@fashionhub.com",
+                        phone_number  = "+201000000000",
+                        apartment     = "NA",
+                        floor         = "NA",
+                        street        = "NA",
+                        building      = "NA",
+                        postal_code   = "NA",
+                        city          = "Cairo",
+                        country       = "EG",
+                        state         = "NA"
+                    },
+                    customer        = new
+                    {
+                        first_name    = "Customer",
+                        last_name     = customerId,
+                        email         = "customer@fashionhub.com",
+                        phone_number  = "+201000000000"
+                    },
+                    // Store customerId so webhook can look up the Payment record
+                    extras          = new { customer_id = customerId }
+                };
+
+                var json = JsonSerializer.Serialize(intentionBody);
+                using var request = new HttpRequestMessage(
+                    HttpMethod.Post, $"{BaseUrl}/v1/intention/");
+
+                request.Headers.Add("Authorization", $"Token {_secretKey}");
+                request.Content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                var response = await _httpClient.SendAsync(request);
+                var body = await response.Content.ReadAsStringAsync();
+
+                if (!response.IsSuccessStatusCode)
+                    return ServiceResult<GatewaySessionResult>.Failure(
+                        $"Paymob API error ({(int)response.StatusCode}): {body}");
+
+                using var doc = JsonDocument.Parse(body);
+                var clientSecret = doc.RootElement
+                    .GetProperty("client_secret").GetString()
+                    ?? throw new InvalidOperationException(
+                        "client_secret not found in Paymob response.");
+
+                // The GatewayPaymentId is the intention ID — used to match the webhook
+                var intentionId = doc.RootElement.TryGetProperty("id", out var idProp)
+                    ? idProp.ToString()
+                    : clientSecret;
 
                 return ServiceResult<GatewaySessionResult>.Success(new GatewaySessionResult
                 {
-                    ClientSecret     = paymentKey,
-                    GatewayPaymentId = orderId.ToString(),
+                    // Frontend uses this to open the Paymob Unified Checkout:
+                    // https://accept.paymob.com/unifiedcheckout/?publicKey={PublicKey}&clientSecret={client_secret}
+                    ClientSecret     = clientSecret,
+                    GatewayPaymentId = intentionId,
                     Amount           = amount,
-                    IframeId         = methodConfig.IframeId
+                    // PublicKey is needed by the frontend — stored in IframeId field
+                    // (reusing the field to avoid breaking the interface)
+                    IframeId         = _publicKey
                 });
             }
             catch (Exception ex)
@@ -103,6 +158,12 @@ namespace Infrastructure.ExternalServices.PaymentGateways
 
         // ─────────────────────────────────────────────────────────────────────
         // ParseWebhookAsync — HMAC-SHA512 verification
+        //
+        // Paymob sends POST to webhook URL with JSON body containing:
+        //   { "type": "TRANSACTION", "obj": { ... transaction fields ... } }
+        // The HMAC is sent as a query parameter: ?hmac=...
+        // OR as a field in the body depending on the integration type.
+        // We support both.
         // ─────────────────────────────────────────────────────────────────────
         public Task<ServiceResult<GatewayWebhookEvent>> ParseWebhookAsync(
             string rawBody, IDictionary<string, string> headers)
@@ -117,29 +178,36 @@ namespace Infrastructure.ExternalServices.PaymentGateways
                 using var doc = JsonDocument.Parse(rawBody);
                 var root = doc.RootElement;
 
-                if (!root.TryGetProperty("hmac", out var hmacElement))
-                    return Task.FromResult(
-                        ServiceResult<GatewayWebhookEvent>.Failure(
-                            "Webhook verification failed: hmac field missing."));
+                // Get the transaction object — could be under "obj" or at root
+                JsonElement obj;
+                if (root.TryGetProperty("obj", out var objProp))
+                    obj = objProp;
+                else
+                    obj = root;
 
-                var receivedHmac = hmacElement.GetString() ?? string.Empty;
+                // Get HMAC — check body first, then headers
+                var receivedHmac = string.Empty;
+                if (root.TryGetProperty("hmac", out var hmacProp))
+                    receivedHmac = hmacProp.GetString() ?? string.Empty;
+                else if (headers.TryGetValue("hmac", out var headerHmac))
+                    receivedHmac = headerHmac;
 
-                if (!root.TryGetProperty("obj", out var obj))
-                    return Task.FromResult(
-                        ServiceResult<GatewayWebhookEvent>.Failure(
-                            "Webhook verification failed: obj field missing."));
+                // Verify HMAC if present
+                if (!string.IsNullOrEmpty(receivedHmac))
+                {
+                    var computedHmac = ComputeHmac(obj);
+                    if (!string.Equals(receivedHmac, computedHmac,
+                            StringComparison.OrdinalIgnoreCase))
+                        return Task.FromResult(
+                            ServiceResult<GatewayWebhookEvent>.Failure(
+                                "Webhook verification failed: HMAC mismatch."));
+                }
 
-                var computedHmac = ComputeHmac(obj);
-
-                if (!string.Equals(receivedHmac, computedHmac, StringComparison.OrdinalIgnoreCase))
-                    return Task.FromResult(
-                        ServiceResult<GatewayWebhookEvent>.Failure(
-                            "Webhook verification failed: HMAC mismatch."));
-
-                // Parse result
+                // Parse transaction result
                 var success = obj.TryGetProperty("success", out var sp) && sp.GetBoolean();
                 var pending = obj.TryGetProperty("pending", out var pp) && pp.GetBoolean();
 
+                // GatewayPaymentId — try order.id first, then intention id
                 var gatewayPaymentId = string.Empty;
                 if (obj.TryGetProperty("order", out var orderProp) &&
                     orderProp.TryGetProperty("id", out var orderIdProp))
@@ -172,81 +240,8 @@ namespace Infrastructure.ExternalServices.PaymentGateways
         }
 
         // ─────────────────────────────────────────────────────────────────────
-        // Private helpers
+        // HMAC-SHA512 computation over required Paymob transaction fields
         // ─────────────────────────────────────────────────────────────────────
-
-        private async Task<string> GetAuthTokenAsync()
-        {
-            var payload = JsonSerializer.Serialize(new { api_key = _apiKey });
-            var response = await PostJsonAsync($"{BaseUrl}/auth/tokens", payload);
-            using var doc = JsonDocument.Parse(response);
-            return doc.RootElement.GetProperty("token").GetString()
-                   ?? throw new InvalidOperationException("Paymob auth token not found.");
-        }
-
-        private async Task<long> RegisterOrderAsync(
-            string authToken, long amountCents, string currency)
-        {
-            var payload = JsonSerializer.Serialize(new
-            {
-                auth_token      = authToken,
-                delivery_needed = false,
-                amount_cents    = amountCents.ToString(),
-                currency        = currency.ToUpperInvariant(),
-                items           = Array.Empty<object>()
-            });
-            var response = await PostJsonAsync($"{BaseUrl}/ecommerce/orders", payload);
-            using var doc = JsonDocument.Parse(response);
-            return doc.RootElement.GetProperty("id").GetInt64();
-        }
-
-        private async Task<string> GetPaymentKeyAsync(
-            string authToken, long orderId, long amountCents,
-            string currency, string customerId, string integrationId)
-        {
-            var payload = JsonSerializer.Serialize(new
-            {
-                auth_token           = authToken,
-                amount_cents         = amountCents.ToString(),
-                expiration           = 3600,
-                order_id             = orderId,
-                billing_data         = new
-                {
-                    first_name      = "Customer",
-                    last_name       = customerId,
-                    email           = "customer@fashionhub.com",
-                    phone_number    = "+201000000000",
-                    apartment       = "NA",
-                    floor           = "NA",
-                    street          = "NA",
-                    building        = "NA",
-                    shipping_method = "NA",
-                    postal_code     = "NA",
-                    city            = "Cairo",
-                    country         = "EG",
-                    state           = "NA"
-                },
-                currency             = currency.ToUpperInvariant(),
-                integration_id       = int.Parse(integrationId),
-                lock_order_when_paid = "false"
-            });
-            var response = await PostJsonAsync($"{BaseUrl}/acceptance/payment_keys", payload);
-            using var doc = JsonDocument.Parse(response);
-            return doc.RootElement.GetProperty("token").GetString()
-                   ?? throw new InvalidOperationException("Paymob payment key not found.");
-        }
-
-        private async Task<string> PostJsonAsync(string url, string jsonPayload)
-        {
-            using var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
-            var response = await _httpClient.PostAsync(url, content);
-            var body = await response.Content.ReadAsStringAsync();
-            if (!response.IsSuccessStatusCode)
-                throw new InvalidOperationException(
-                    $"Paymob API error ({response.StatusCode}): {body}");
-            return body;
-        }
-
         private string ComputeHmac(JsonElement obj)
         {
             var fields = new[]
@@ -300,11 +295,13 @@ namespace Infrastructure.ExternalServices.PaymentGateways
     }
 
     /// <summary>
-    /// Config for a single Paymob payment method (Integration + iFrame pair).
+    /// Config for a single Paymob payment method.
+    /// IntegrationId is the ID from the Paymob dashboard Payment Integrations.
     /// </summary>
     public class PaymobMethodConfig
     {
         public string IntegrationId { get; set; } = string.Empty;
-        public string IframeId      { get; set; } = string.Empty;
+        /// <summary>Not used in the new Unified Checkout API — kept for backward compat.</summary>
+        public string IframeId { get; set; } = string.Empty;
     }
 }

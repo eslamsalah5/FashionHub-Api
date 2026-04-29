@@ -26,7 +26,6 @@ namespace Presentation.Extensions
 
             services.AddScoped<IPaymentGateway>(sp =>
             {
-                // Read all configured payment methods from appsettings
                 var methodsSection = configuration.GetSection("Paymob:PaymentMethods");
                 var methods = new Dictionary<string, PaymobMethodConfig>(
                     StringComparer.OrdinalIgnoreCase);
@@ -41,8 +40,9 @@ namespace Presentation.Extensions
                 }
 
                 return new PaymobPaymentGateway(
-                    apiKey:        configuration["Paymob:ApiKey"]       ?? string.Empty,
-                    hmacSecret:    configuration["Paymob:HmacSecret"]   ?? string.Empty,
+                    secretKey:     configuration["Paymob:SecretKey"]     ?? string.Empty,
+                    publicKey:     configuration["Paymob:PublicKey"]     ?? string.Empty,
+                    hmacSecret:    configuration["Paymob:HmacSecret"]    ?? string.Empty,
                     defaultMethod: configuration["Paymob:DefaultMethod"] ?? "card",
                     methods:       methods,
                     httpClient:    sp.GetRequiredService<IHttpClientFactory>()

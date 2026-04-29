@@ -64,7 +64,9 @@ namespace Application.Services
             return ServiceResult<PaymentIntentResponseDto>.Success(new PaymentIntentResponseDto
             {
                 ClientSecret = sessionResult.Data.ClientSecret,
-                Amount       = totalAmount
+                Amount       = totalAmount,
+                PublicKey    = sessionResult.Data.IframeId, // Paymob stores PublicKey here
+                Gateway      = gateway.GatewayName
             });
         }
 
