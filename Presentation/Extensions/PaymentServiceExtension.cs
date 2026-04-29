@@ -21,12 +21,37 @@ namespace Presentation.Extensions
 
             services.AddScoped<PaymentIntentService>();
 
+            // ── Paymob ────────────────────────────────────────────────────────
+            services.AddHttpClient(nameof(PaymobPaymentGateway));
+
+            services.AddScoped<IPaymentGateway>(sp =>
+            {
+                // Read all configured payment methods from appsettings
+                var methodsSection = configuration.GetSection("Paymob:PaymentMethods");
+                var methods = new Dictionary<string, PaymobMethodConfig>(
+                    StringComparer.OrdinalIgnoreCase);
+
+                foreach (var child in methodsSection.GetChildren())
+                {
+                    methods[child.Key] = new PaymobMethodConfig
+                    {
+                        IntegrationId = child["IntegrationId"] ?? string.Empty,
+                        IframeId      = child["IframeId"]      ?? string.Empty
+                    };
+                }
+
+                return new PaymobPaymentGateway(
+                    apiKey:        configuration["Paymob:ApiKey"]       ?? string.Empty,
+                    hmacSecret:    configuration["Paymob:HmacSecret"]   ?? string.Empty,
+                    defaultMethod: configuration["Paymob:DefaultMethod"] ?? "card",
+                    methods:       methods,
+                    httpClient:    sp.GetRequiredService<IHttpClientFactory>()
+                                     .CreateClient(nameof(PaymobPaymentGateway)));
+            });
+
             // ── Add more gateways here when needed ────────────────────────────
-            // Example (PayPal):
+            // Example:
             //   services.AddScoped<IPaymentGateway, PayPalPaymentGateway>();
-            //
-            // Example (Paymob):
-            //   services.AddScoped<IPaymentGateway, PaymobPaymentGateway>();
 
             // ── Core payment service ──────────────────────────────────────────
             services.AddScoped<IPaymentService, PaymentService>();

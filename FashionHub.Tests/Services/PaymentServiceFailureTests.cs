@@ -152,7 +152,8 @@ public class PaymentServiceFailureTests
             .Setup(g => g.CreateSessionAsync(
                 It.IsAny<decimal>(),
                 It.IsAny<string>(),
-                It.IsAny<string>()))
+                It.IsAny<string>(),
+                It.IsAny<string?>()))
             .ReturnsAsync(ServiceResult<GatewaySessionResult>.Failure("Stripe error: Your card was declined."));
 
         var service = new PaymentService(mockUow.Object, new[] { mockGateway.Object });
@@ -213,7 +214,8 @@ public class PaymentServiceFailureTests
             .Setup(g => g.CreateSessionAsync(
                 It.IsAny<decimal>(),
                 It.IsAny<string>(),
-                It.IsAny<string>()))
+                It.IsAny<string>(),
+                It.IsAny<string?>()))
             .ReturnsAsync(ServiceResult<GatewaySessionResult>.Failure("Error creating payment session: Database connection lost."));
 
         var service = new PaymentService(mockUow.Object, new[] { mockGateway.Object });

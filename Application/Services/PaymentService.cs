@@ -44,7 +44,7 @@ namespace Application.Services
             decimal totalAmount = cart.CartItems.Sum(ci => ci.Quantity * ci.PriceAtAddition);
 
             // Delegate to the chosen gateway
-            var sessionResult = await gateway.CreateSessionAsync(totalAmount, "usd", customerId);
+            var sessionResult = await gateway.CreateSessionAsync(totalAmount, "usd", customerId, dto.PaymentMethod);
             if (!sessionResult.IsSuccess)
                 return ServiceResult<PaymentIntentResponseDto>.Failure(sessionResult.Errors);
 

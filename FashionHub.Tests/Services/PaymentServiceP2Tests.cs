@@ -155,7 +155,8 @@ public class PaymentServiceP2Tests
             .Setup(g => g.CreateSessionAsync(
                 It.IsAny<decimal>(),
                 It.IsAny<string>(),
-                It.IsAny<string>()))
+                It.IsAny<string>(),
+                It.IsAny<string?>()))
             .ReturnsAsync(ServiceResult<GatewaySessionResult>.Success(new GatewaySessionResult
             {
                 ClientSecret     = fakeClientSecret,

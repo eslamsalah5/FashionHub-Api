@@ -20,5 +20,11 @@ namespace Application.DTOs.Payment
 
         /// <summary>Amount in the original currency (dollars, not cents).</summary>
         public decimal Amount { get; set; }
+
+        /// <summary>
+        /// Optional: Paymob iFrame ID needed by the frontend to render the payment iFrame.
+        /// Null for gateways that don't use iFrames (e.g. Stripe).
+        /// </summary>
+        public string? IframeId { get; set; }
     }
 }

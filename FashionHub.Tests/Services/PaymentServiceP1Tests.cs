@@ -112,20 +112,23 @@ public class PaymentServiceP1Tests
         mockUow.Setup(u => u.Payments).Returns(mockPaymentRepo.Object);
         mockUow.Setup(u => u.SaveChangesAsync()).ReturnsAsync(1);
 
-        // Mock IPaymentGateway — return a successful GatewaySessionResult
+        // Mock IPaymentGateway — gateway just needs to succeed; Amount in the
+        // response DTO comes from totalAmount (calculated from cart), not from
+        // the gateway result, so we return Amount = 0 here.
         var mockGateway = new Mock<IPaymentGateway>();
         mockGateway.Setup(g => g.GatewayName).Returns("stripe");
         mockGateway
             .Setup(g => g.CreateSessionAsync(
                 It.IsAny<decimal>(),
                 It.IsAny<string>(),
-                It.IsAny<string>()))
-            .ReturnsAsync((decimal amount, string currency, string custId) =>
-                ServiceResult<GatewaySessionResult>.Success(new GatewaySessionResult
+                It.IsAny<string>(),
+                It.IsAny<string?>()))
+            .ReturnsAsync(ServiceResult<GatewaySessionResult>.Success(
+                new GatewaySessionResult
                 {
-                    ClientSecret   = "pi_test_secret",
+                    ClientSecret     = "pi_test_secret",
                     GatewayPaymentId = "pi_test_p1",
-                    Amount         = amount
+                    Amount           = 0m   // not used by PaymentService for the DTO
                 }));
 
         var service = new PaymentService(mockUow.Object, new[] { mockGateway.Object });
