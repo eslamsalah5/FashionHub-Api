@@ -14,9 +14,9 @@ namespace Presentation.Extensions
             {
                 c.SwaggerDoc("v1", new OpenApiInfo
                 {
-                    Title = "Ra7ala API",
+                    Title = "FashionHub API",
                     Version = "v1",
-                    Description = "API for Ra7ala transportation service"
+                    Description = "API for FashionHub e-commerce platform"
                 });
 
                 // Define the JWT Bearer Authentication scheme for Swagger
@@ -54,16 +54,15 @@ namespace Presentation.Extensions
 
         public static WebApplication UseSwaggerMiddleware(this WebApplication app)
         {
-            if (app.Environment.IsDevelopment())
+            // Enable Swagger in all environments (Development + Production)
+            app.UseSwagger();
+            app.UseSwaggerUI(c =>
             {
-                app.UseSwagger();
-                app.UseSwaggerUI(c => 
-                {
-                    c.SwaggerEndpoint("/swagger/v1/swagger.json", "Ra7ala API v1");
-                    c.DocExpansion(Swashbuckle.AspNetCore.SwaggerUI.DocExpansion.None); // Collapses all endpoints by default
-                    c.DefaultModelsExpandDepth(-1); // Hide models section
-                });
-            }
+                c.SwaggerEndpoint("/swagger/v1/swagger.json", "FashionHub API v1");
+                c.RoutePrefix = string.Empty; // Serve Swagger UI at root "/"
+                c.DocExpansion(Swashbuckle.AspNetCore.SwaggerUI.DocExpansion.None);
+                c.DefaultModelsExpandDepth(-1);
+            });
 
             return app;
         }

@@ -1,4 +1,3 @@
-using Microsoft.OpenApi.Models;
 using Presentation.Extensions;
 
 namespace Presentation
