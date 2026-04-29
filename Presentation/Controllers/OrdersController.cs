@@ -22,6 +22,9 @@ namespace Presentation.Controllers
 
         [HttpPost]
         [Authorize(Roles = "Customer")]
+        // Note: In the payment-driven flow, orders are created automatically
+        // by the webhook handler after payment confirmation.
+        // This endpoint is for manual order creation only.
         public async Task<ActionResult<ApiResponse>> CreateOrder(CreateOrderDto createOrderDto)
         {
             var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);

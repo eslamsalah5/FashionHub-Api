@@ -125,6 +125,7 @@ namespace Presentation.Controllers
         }
 
         //[Authorize(Roles = "Admin,SuperAdmin")]
+        [Authorize(Roles = "Admin")]
         [HttpGet("admin/{id}")]
         public async Task<ActionResult<AdminProfileDto>> GetAdminById(string id)
         {
@@ -139,6 +140,7 @@ namespace Presentation.Controllers
         }
 
         //[Authorize(Roles = "Customer,Admin,SuperAdmin")]
+        [Authorize]
         [HttpGet("customer/{id}")]
         public async Task<ActionResult<CustomerProfileDto>> GetCustomerById(string id)
         {

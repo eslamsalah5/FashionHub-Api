@@ -25,6 +25,38 @@ namespace Presentation.Controllers
         }
 
         // ─────────────────────────────────────────────────────────────
+        // GET api/payment/methods
+        // Returns all available payment gateways and their methods.
+        // The frontend uses this to build the payment selection UI.
+        // ─────────────────────────────────────────────────────────────
+        [HttpGet("methods")]
+        [AllowAnonymous]
+        public IActionResult GetPaymentMethods()
+        {
+            var result = _gateways.Select(g => new PaymentGatewayDto
+            {
+                Name        = g.GatewayName,
+                DisplayName = g.GatewayName switch
+                {
+                    "stripe" => "Credit / Debit Card",
+                    "paymob" => "Paymob",
+                    _        => g.GatewayName
+                },
+                Methods = g.GatewayName switch
+                {
+                    "paymob" => new List<PaymentMethodDto>
+                    {
+                        new() { Key = "card",   DisplayName = "Visa / Mastercard / Meeza" },
+                        new() { Key = "wallet", DisplayName = "Mobile Wallet (Vodafone Cash, Orange Cash, e& money)" }
+                    },
+                    _ => null
+                }
+            }).ToList();
+
+            return Ok(result);
+        }
+
+        // ─────────────────────────────────────────────────────────────
         // POST api/payment/create-payment-intent
         // ─────────────────────────────────────────────────────────────
         [HttpPost("create-payment-intent")]
