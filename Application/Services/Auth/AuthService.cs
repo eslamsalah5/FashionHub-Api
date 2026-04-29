@@ -434,9 +434,32 @@ namespace Application.Services.Auth
         }
         
         
-        public Task<ServiceResult<CustomerProfileDto>> GetCustomerByIdAsync(string id)
+        public async Task<ServiceResult<CustomerProfileDto>> GetCustomerByIdAsync(string id)
         {
-            throw new NotImplementedException();
+            var customer = await _unitOfWork.Users.GetCustomerByUserIdAsync(id);
+
+            if (customer == null || customer.AppUser == null)
+            {
+                return ServiceResult<CustomerProfileDto>.Failure("Customer not found");
+            }
+
+            var appUser = customer.AppUser;
+
+            var customerProfile = new CustomerProfileDto
+            {
+                Id = appUser.Id,
+                FullName = appUser.FullName,
+                Email = appUser.Email,
+                PhoneNumber = appUser.PhoneNumber,
+                DateOfBirth = appUser.DateOfBirth,
+                Address = appUser.Address,
+                ProfilePictureUrl = appUser.ProfilePictureUrl,
+                DateCreated = appUser.DateCreated,
+                LastLogin = appUser.LastLogin,
+                UserType = "Customer"
+            };
+
+            return ServiceResult<CustomerProfileDto>.Success(customerProfile);
         }
 
         #endregion

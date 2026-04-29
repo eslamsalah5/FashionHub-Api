@@ -58,6 +58,14 @@ namespace Presentation
             // Seed database data
             await app.SeedDatabaseAsync();
 
+            // Enable request body buffering so the Stripe webhook can read the raw body
+            // for signature verification (must be before routing/controllers)
+            app.Use(async (context, next) =>
+            {
+                context.Request.EnableBuffering();
+                await next();
+            });
+
             // Configure the Swagger middleware using extension method
             app.UseSwaggerMiddleware();
 

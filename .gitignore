@@ -141,3 +141,6 @@ App_Data/*.ldf
 # Other common files
 .DS_Store
 Thumbs.db
+API_ENDPOINTS_PAYMENT.md
+PAYMENT_CHANGES_SUMMARY.md
+STRIPE_WEBHOOK_SETUP.md
