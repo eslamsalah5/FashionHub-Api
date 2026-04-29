@@ -139,14 +139,10 @@ namespace Infrastructure.ExternalServices.PaymentGateways
 
                 return ServiceResult<GatewaySessionResult>.Success(new GatewaySessionResult
                 {
-                    // Frontend uses this to open the Paymob Unified Checkout:
-                    // https://accept.paymob.com/unifiedcheckout/?publicKey={PublicKey}&clientSecret={client_secret}
                     ClientSecret     = clientSecret,
                     GatewayPaymentId = intentionId,
                     Amount           = amount,
-                    // PublicKey is needed by the frontend — stored in IframeId field
-                    // (reusing the field to avoid breaking the interface)
-                    IframeId         = _publicKey
+                    PublicKey        = _publicKey   // frontend needs this for Unified Checkout
                 });
             }
             catch (Exception ex)

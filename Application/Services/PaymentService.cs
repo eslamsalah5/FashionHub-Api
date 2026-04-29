@@ -44,7 +44,7 @@ namespace Application.Services
             decimal totalAmount = cart.CartItems.Sum(ci => ci.Quantity * ci.PriceAtAddition);
 
             // Delegate to the chosen gateway
-            var sessionResult = await gateway.CreateSessionAsync(totalAmount, "usd", customerId, dto.PaymentMethod);
+            var sessionResult = await gateway.CreateSessionAsync(totalAmount, "EGP", customerId, dto.PaymentMethod);
             if (!sessionResult.IsSuccess)
                 return ServiceResult<PaymentIntentResponseDto>.Failure(sessionResult.Errors);
 
@@ -65,7 +65,7 @@ namespace Application.Services
             {
                 ClientSecret = sessionResult.Data.ClientSecret,
                 Amount       = totalAmount,
-                PublicKey    = sessionResult.Data.IframeId, // Paymob stores PublicKey here
+                PublicKey    = sessionResult.Data.PublicKey,
                 Gateway      = gateway.GatewayName
             });
         }
