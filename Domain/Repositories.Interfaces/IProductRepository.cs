@@ -19,6 +19,9 @@ namespace Domain.Repositories.Interfaces
 
         // Stock
         Task<bool> UpdateStockQuantityAsync(int productId, int quantity);
+        
+        // Find product even if soft-deleted (used for hard delete)
+        Task<Product?> GetByIdIncludingDeletedAsync(int id);
 
         // Hard delete — physically removes the record and is safe to call after images are already deleted
         Task HardDeleteAsync(Product product);

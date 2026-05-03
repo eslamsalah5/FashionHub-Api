@@ -1,4 +1,5 @@
 using Presentation.Extensions;
+using Presentation.BackgroundServices;
 
 namespace Presentation
 {
@@ -48,10 +49,12 @@ namespace Presentation
             builder.Services.AddOrderService();
               // Configure Payment services
             builder.Services.AddPaymentService(builder.Configuration);
+
+              // Configure reservation expiry sweep
+              builder.Services.Configure<PaymentReservationOptions>(
+                builder.Configuration.GetSection("PaymentReservation"));
+              builder.Services.AddHostedService<PaymentReservationExpiryService>();
                         
-            // Configure Repository services
-            builder.Services.AddRepositoryServices();
-            
 
             // Configure Data Seed services
             builder.Services.AddDataSeedServices();

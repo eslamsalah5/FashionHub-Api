@@ -4,6 +4,7 @@ using Application.Services.Interfaces;
 using Domain.Entities;
 using Domain.Enums;
 using Domain.Repositories.Interfaces;
+using System.Text.Json;
 
 namespace Application.Services
 {
@@ -11,6 +12,15 @@ namespace Application.Services
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IEnumerable<IPaymentGateway> _gateways;
+
+        private sealed record CartSnapshotItem(
+            int ProductId,
+            string ProductName,
+            string ProductSKU,
+            decimal UnitPrice,
+            int Quantity,
+            string SelectedSize,
+            string SelectedColor);
 
         public PaymentService(IUnitOfWork unitOfWork, IEnumerable<IPaymentGateway> gateways)
         {
@@ -43,6 +53,16 @@ namespace Application.Services
 
             decimal totalAmount = cart.CartItems.Sum(ci => ci.Quantity * ci.PriceAtAddition);
 
+            var snapshotItems = cart.CartItems.Select(ci => new CartSnapshotItem(
+                ProductId: ci.ProductId,
+                ProductName: ci.Product.Name,
+                ProductSKU: ci.Product.SKU,
+                UnitPrice: ci.PriceAtAddition,
+                Quantity: ci.Quantity,
+                SelectedSize: ci.SelectedSize,
+                SelectedColor: ci.SelectedColor
+            )).ToList();
+
             // Build real billing info from the customer's profile
             var billingInfo = await BuildBillingInfoAsync(customerId);
 
@@ -53,18 +73,38 @@ namespace Application.Services
             if (!sessionResult.IsSuccess)
                 return ServiceResult<PaymentIntentResponseDto>.Failure(sessionResult.Errors);
 
-            // Persist a pending payment record
-            var payment = new Payment
+            await _unitOfWork.BeginTransactionAsync();
+            try
             {
-                Amount           = totalAmount,
-                GatewayPaymentId = sessionResult.Data!.GatewayPaymentId,
-                GatewayName      = gateway.GatewayName,
-                Status           = "pending",
-                CustomerId       = customerId
-            };
+                foreach (var cartItem in cart.CartItems)
+                {
+                    if (cartItem.Product.StockQuantity < cartItem.Quantity)
+                        return await RollbackAndFailAsync<PaymentIntentResponseDto>(
+                            $"Insufficient stock for product '{cartItem.Product.Name}'.");
 
-            await _unitOfWork.Payments.AddAsync(payment);
-            await _unitOfWork.SaveChangesAsync();
+                    cartItem.Product.StockQuantity -= cartItem.Quantity;
+                }
+
+                // Persist a pending payment record
+                var payment = new Payment
+                {
+                    Amount           = totalAmount,
+                    CartSnapshotJson = JsonSerializer.Serialize(snapshotItems),
+                    GatewayPaymentId = sessionResult.Data!.GatewayPaymentId,
+                    GatewayName      = gateway.GatewayName,
+                    Status           = "pending",
+                    CustomerId       = customerId
+                };
+
+                await _unitOfWork.Payments.AddAsync(payment);
+                await _unitOfWork.CommitTransactionAsync();
+            }
+            catch (Exception ex)
+            {
+                await SafeRollbackAsync();
+                return ServiceResult<PaymentIntentResponseDto>.Failure(
+                    $"Failed to reserve stock: {ex.Message}");
+            }
 
             // Build redirect URL for Paymob
             string? redirectUrl = null;
@@ -142,47 +182,119 @@ namespace Application.Services
                 if (payment.Status == "succeeded")
                     return ServiceResult<int>.Success(0);
 
-                payment.Status      = "succeeded";
-                payment.PaymentDate = DateTime.UtcNow;
-
-                var cart = await _unitOfWork.Carts.GetCartWithItemsByCustomerIdAsync(payment.CustomerId);
-                if (cart == null || !cart.CartItems.Any())
-                    return ServiceResult<int>.Failure("Cart not found or already cleared");
+                await _unitOfWork.BeginTransactionAsync();
 
                 var order = new Order
                 {
-                    CustomerId  = payment.CustomerId,
-                    TotalAmount = payment.Amount,
-                    Status      = OrderStatus.Processing,
-                    Payment     = payment
+                    CustomerId = payment.CustomerId,
+                    Status     = OrderStatus.Processing,
+                    Payment    = payment
                 };
 
-                foreach (var cartItem in cart.CartItems)
-                {
-                    order.OrderItems.Add(new OrderItem
-                    {
-                        ProductId     = cartItem.ProductId,
-                        ProductName   = cartItem.Product.Name,
-                        ProductSKU    = cartItem.Product.SKU,
-                        UnitPrice     = cartItem.PriceAtAddition,
-                        Quantity      = cartItem.Quantity,
-                        Subtotal      = cartItem.Quantity * cartItem.PriceAtAddition,
-                        SelectedSize  = cartItem.SelectedSize,
-                        SelectedColor = cartItem.SelectedColor
-                    });
+                decimal totalAmount = 0m;
+                var snapshotItems = TryReadSnapshot(payment.CartSnapshotJson);
 
-                    cartItem.Product.StockQuantity -= cartItem.Quantity;
+                if (snapshotItems is { Count: > 0 })
+                {
+                    foreach (var item in snapshotItems)
+                    {
+                        order.OrderItems.Add(new OrderItem
+                        {
+                            ProductId     = item.ProductId,
+                            ProductName   = item.ProductName,
+                            ProductSKU    = item.ProductSKU,
+                            UnitPrice     = item.UnitPrice,
+                            Quantity      = item.Quantity,
+                            Subtotal      = item.UnitPrice * item.Quantity,
+                            SelectedSize  = item.SelectedSize,
+                            SelectedColor = item.SelectedColor
+                        });
+
+                        totalAmount += item.UnitPrice * item.Quantity;
+                    }
+                }
+                else
+                {
+                    var cart = await _unitOfWork.Carts.GetCartWithItemsByCustomerIdAsync(payment.CustomerId);
+                    if (cart == null || !cart.CartItems.Any())
+                        return await RollbackAndFailAsync<int>("Cart not found or already cleared");
+
+                    foreach (var cartItem in cart.CartItems)
+                    {
+                        if (cartItem.Product.StockQuantity < cartItem.Quantity)
+                            return await RollbackAndFailAsync<int>(
+                                $"Insufficient stock for product '{cartItem.Product.Name}'.");
+
+                        order.OrderItems.Add(new OrderItem
+                        {
+                            ProductId     = cartItem.ProductId,
+                            ProductName   = cartItem.Product.Name,
+                            ProductSKU    = cartItem.Product.SKU,
+                            UnitPrice     = cartItem.PriceAtAddition,
+                            Quantity      = cartItem.Quantity,
+                            Subtotal      = cartItem.Quantity * cartItem.PriceAtAddition,
+                            SelectedSize  = cartItem.SelectedSize,
+                            SelectedColor = cartItem.SelectedColor
+                        });
+
+                        totalAmount += cartItem.PriceAtAddition * cartItem.Quantity;
+                    }
+
+                    await _unitOfWork.Carts.ClearCartAsync(cart.Id);
                 }
 
+                order.TotalAmount = totalAmount;
+                payment.Status = "succeeded";
+                payment.PaymentDate = DateTime.UtcNow;
+
                 await _unitOfWork.Orders.AddAsync(order);
-                await _unitOfWork.Carts.ClearCartAsync(cart.Id);
-                await _unitOfWork.SaveChangesAsync();
+
+                // Best-effort cart cleanup even when snapshot was used
+                var existingCart = await _unitOfWork.Carts.GetCartWithItemsByCustomerIdAsync(payment.CustomerId);
+                if (existingCart != null && existingCart.CartItems.Any())
+                {
+                    await _unitOfWork.Carts.ClearCartAsync(existingCart.Id);
+                }
+
+                await _unitOfWork.CommitTransactionAsync();
 
                 return ServiceResult<int>.Success(order.Id);
             }
             catch (Exception ex)
             {
+                await SafeRollbackAsync();
                 return ServiceResult<int>.Failure($"Error handling payment succeeded: {ex.Message}");
+            }
+        }
+
+        private static List<CartSnapshotItem>? TryReadSnapshot(string? json)
+        {
+            if (string.IsNullOrWhiteSpace(json)) return null;
+            try
+            {
+                return JsonSerializer.Deserialize<List<CartSnapshotItem>>(json);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private async Task<ServiceResult<T>> RollbackAndFailAsync<T>(string message)
+        {
+            await SafeRollbackAsync();
+            return ServiceResult<T>.Failure(message);
+        }
+
+        private async Task SafeRollbackAsync()
+        {
+            try
+            {
+                await _unitOfWork.RollbackTransactionAsync();
+            }
+            catch
+            {
+                // Swallow rollback errors to avoid masking the original failure.
             }
         }
 
@@ -206,13 +318,27 @@ namespace Application.Services
                 if (payment == null)
                     return ServiceResult<bool>.Failure("Payment record not found");
 
+                await _unitOfWork.BeginTransactionAsync();
+
+                var snapshotItems = TryReadSnapshot(payment.CartSnapshotJson);
+                if (snapshotItems is { Count: > 0 })
+                {
+                    foreach (var item in snapshotItems)
+                    {
+                        var product = await _unitOfWork.Products.GetByIdAsync(item.ProductId);
+                        if (product != null)
+                            product.StockQuantity += item.Quantity;
+                    }
+                }
+
                 payment.Status = "failed";
-                await _unitOfWork.SaveChangesAsync();
+                await _unitOfWork.CommitTransactionAsync();
 
                 return ServiceResult<bool>.Success(true);
             }
             catch (Exception ex)
             {
+                await SafeRollbackAsync();
                 return ServiceResult<bool>.Failure($"Error handling payment failed: {ex.Message}");
             }
         }

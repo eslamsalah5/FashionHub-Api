@@ -112,5 +112,45 @@ namespace Infrastructure.ExternalServices.PaymentGateways
                         $"Webhook signature verification failed: {ex.Message}"));
             }
         }
+
+        // ─────────────────────────────────────────────────────────────
+        // Check PaymentIntent status for reservation expiry verification
+        // ─────────────────────────────────────────────────────────────
+        public async Task<ServiceResult<GatewayPaymentStatus>> GetPaymentStatusAsync(
+            string gatewayPaymentId)
+        {
+            if (string.IsNullOrWhiteSpace(gatewayPaymentId))
+                return ServiceResult<GatewayPaymentStatus>.Failure("Payment ID is missing.");
+
+            try
+            {
+                var intent = await _paymentIntentService.GetAsync(gatewayPaymentId);
+                var status = intent.Status?.ToLowerInvariant() ?? string.Empty;
+
+                var mapped = status switch
+                {
+                    "succeeded" => GatewayPaymentStatus.Succeeded,
+                    "canceled" => GatewayPaymentStatus.Failed,
+                    "requires_payment_method" => GatewayPaymentStatus.Pending,
+                    "requires_confirmation" => GatewayPaymentStatus.Pending,
+                    "requires_action" => GatewayPaymentStatus.Pending,
+                    "processing" => GatewayPaymentStatus.Pending,
+                    "requires_capture" => GatewayPaymentStatus.Pending,
+                    _ => GatewayPaymentStatus.Unknown
+                };
+
+                return ServiceResult<GatewayPaymentStatus>.Success(mapped);
+            }
+            catch (StripeException ex)
+            {
+                return ServiceResult<GatewayPaymentStatus>.Failure(
+                    $"Stripe status check failed: {ex.StripeError?.Message ?? ex.Message}");
+            }
+            catch (Exception ex)
+            {
+                return ServiceResult<GatewayPaymentStatus>.Failure(
+                    $"Stripe status check failed: {ex.Message}");
+            }
+        }
     }
 }

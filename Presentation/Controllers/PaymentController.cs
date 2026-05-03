@@ -181,8 +181,9 @@ namespace Presentation.Controllers
         // Temporary endpoint for debugging to prove the order creation logic works.
         // Bypasses the Stripe webhook signature verification.
         // ─────────────────────────────────────────────────────────────
+#if DEBUG
         [HttpPost("force-success/{gatewayPaymentId}")]
-        [AllowAnonymous]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> ForceSuccess([FromRoute] string gatewayPaymentId)
         {
             var dummyEvent = new GatewayWebhookEvent
@@ -198,5 +199,6 @@ namespace Presentation.Controllers
 
             return Ok(new { Message = "Order created successfully via forced webhook!", OrderId = result.Data });
         }
+#endif
     }
 }

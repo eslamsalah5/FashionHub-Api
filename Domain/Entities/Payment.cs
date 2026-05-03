@@ -5,6 +5,12 @@ namespace Domain.Entities
         public decimal Amount { get; set; }
 
         /// <summary>
+        /// JSON snapshot of the cart items at intent creation time.
+        /// Used by webhook processing to create orders without relying on live cart state.
+        /// </summary>
+        public string CartSnapshotJson { get; set; } = string.Empty;
+
+        /// <summary>
         /// The gateway's own ID for this payment session (e.g. Stripe PaymentIntent ID).
         /// Used by the webhook handler to look up this record.
         /// </summary>

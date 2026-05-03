@@ -25,5 +25,13 @@ namespace Infrastructure.Repositories
                 .OrderByDescending(p => p.PaymentDate)
                 .FirstOrDefaultAsync();
         }
+
+        public async Task<List<Payment>> GetPendingOlderThanAsync(DateTime cutoffUtc)
+        {
+            return await _dbSet
+                .Where(p => p.Status == "pending" && p.PaymentDate <= cutoffUtc)
+                .OrderBy(p => p.PaymentDate)
+                .ToListAsync();
+        }
     }
 }

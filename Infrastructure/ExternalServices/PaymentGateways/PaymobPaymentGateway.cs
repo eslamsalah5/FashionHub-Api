@@ -200,16 +200,19 @@ namespace Infrastructure.ExternalServices.PaymentGateways
                 else if (headers.TryGetValue("hmac", out var headerHmac))
                     receivedHmac = headerHmac;
 
-                // Verify HMAC if present
-                if (!string.IsNullOrEmpty(receivedHmac))
+                if (string.IsNullOrWhiteSpace(receivedHmac))
                 {
-                    var computedHmac = ComputeHmac(obj);
-                    if (!string.Equals(receivedHmac, computedHmac,
-                            StringComparison.OrdinalIgnoreCase))
-                        return Task.FromResult(
-                            ServiceResult<GatewayWebhookEvent>.Failure(
-                                "Webhook verification failed: HMAC mismatch."));
+                    return Task.FromResult(
+                        ServiceResult<GatewayWebhookEvent>.Failure(
+                            "Webhook verification failed: HMAC is missing."));
                 }
+
+                var computedHmac = ComputeHmac(obj);
+                if (!string.Equals(receivedHmac, computedHmac,
+                        StringComparison.OrdinalIgnoreCase))
+                    return Task.FromResult(
+                        ServiceResult<GatewayWebhookEvent>.Failure(
+                            "Webhook verification failed: HMAC mismatch."));
 
                 // Parse transaction result
                 var success = obj.TryGetProperty("success", out var sp) && sp.GetBoolean();
@@ -289,6 +292,73 @@ namespace Infrastructure.ExternalServices.PaymentGateways
         }
 
         // ─────────────────────────────────────────────────────────────────────
+        // Check intention/transaction status for reservation expiry verification
+        // ─────────────────────────────────────────────────────────────────────
+        public async Task<ServiceResult<GatewayPaymentStatus>> GetPaymentStatusAsync(
+            string gatewayPaymentId)
+        {
+            if (string.IsNullOrWhiteSpace(gatewayPaymentId))
+                return ServiceResult<GatewayPaymentStatus>.Failure("Payment ID is missing.");
+
+            if (string.IsNullOrEmpty(_secretKey))
+                return ServiceResult<GatewayPaymentStatus>.Failure(
+                    "Paymob SecretKey is not configured.");
+
+            try
+            {
+                using var request = new HttpRequestMessage(
+                    HttpMethod.Get, $"{BaseUrl}/v1/intention/{gatewayPaymentId}");
+
+                request.Headers.Add("Authorization", $"Token {_secretKey}");
+
+                var response = await _httpClient.SendAsync(request);
+                var body = await response.Content.ReadAsStringAsync();
+
+                if (!response.IsSuccessStatusCode)
+                    return ServiceResult<GatewayPaymentStatus>.Failure(
+                        $"Paymob API error ({(int)response.StatusCode}): {body}");
+
+                using var doc = JsonDocument.Parse(body);
+                var root = doc.RootElement;
+
+                if (TryGetBool(root, "success", out var success) && success)
+                    return ServiceResult<GatewayPaymentStatus>.Success(
+                        GatewayPaymentStatus.Succeeded);
+
+                if (TryGetBool(root, "pending", out var pending) && pending)
+                    return ServiceResult<GatewayPaymentStatus>.Success(
+                        GatewayPaymentStatus.Pending);
+
+                if (TryGetString(root, "status", out var status))
+                {
+                    var normalized = status.Trim().ToLowerInvariant();
+                    if (normalized.Contains("paid") || normalized.Contains("success"))
+                        return ServiceResult<GatewayPaymentStatus>.Success(
+                            GatewayPaymentStatus.Succeeded);
+
+                    if (normalized.Contains("cancel") || normalized.Contains("fail") || normalized.Contains("expire"))
+                        return ServiceResult<GatewayPaymentStatus>.Success(
+                            GatewayPaymentStatus.Failed);
+                }
+
+                if (TryGetBool(root, "success", out success) && !success &&
+                    TryGetBool(root, "pending", out pending) && !pending)
+                {
+                    return ServiceResult<GatewayPaymentStatus>.Success(
+                        GatewayPaymentStatus.Failed);
+                }
+
+                return ServiceResult<GatewayPaymentStatus>.Success(
+                    GatewayPaymentStatus.Unknown);
+            }
+            catch (Exception ex)
+            {
+                return ServiceResult<GatewayPaymentStatus>.Failure(
+                    $"Paymob status check failed: {ex.Message}");
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
         // HMAC-SHA512 computation over required Paymob transaction fields
         // ─────────────────────────────────────────────────────────────────────
         private string ComputeHmac(JsonElement obj)
@@ -340,6 +410,35 @@ namespace Infrastructure.ExternalServices.PaymentGateways
         {
             if (!element.TryGetProperty(parent, out var parentProp)) return string.Empty;
             return GetString(parentProp, child);
+        }
+
+        private static bool TryGetBool(JsonElement element, string property, out bool value)
+        {
+            value = false;
+            if (!element.TryGetProperty(property, out var prop)) return false;
+            if (prop.ValueKind == JsonValueKind.True)
+            {
+                value = true;
+                return true;
+            }
+            if (prop.ValueKind == JsonValueKind.False)
+            {
+                value = false;
+                return true;
+            }
+            return false;
+        }
+
+        private static bool TryGetString(JsonElement element, string property, out string value)
+        {
+            value = string.Empty;
+            if (!element.TryGetProperty(property, out var prop)) return false;
+            if (prop.ValueKind == JsonValueKind.String)
+            {
+                value = prop.GetString() ?? string.Empty;
+                return true;
+            }
+            return false;
         }
     }
 

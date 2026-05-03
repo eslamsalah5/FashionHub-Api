@@ -16,5 +16,11 @@ namespace Domain.Repositories.Interfaces
         /// (e.g. Paymob sends order.id but we stored the intention id).
         /// </summary>
         Task<Payment?> GetPendingByCustomerIdAsync(string customerId);
+
+        /// <summary>
+        /// Returns pending payments created before the cutoff time.
+        /// Used by the reservation expiry sweep.
+        /// </summary>
+        Task<List<Payment>> GetPendingOlderThanAsync(DateTime cutoffUtc);
     }
 }

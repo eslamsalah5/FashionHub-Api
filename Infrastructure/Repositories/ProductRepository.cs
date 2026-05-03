@@ -126,6 +126,13 @@ namespace Infrastructure.Repositories
             return true;
         }
 
+        public async Task<Product?> GetByIdIncludingDeletedAsync(int id)
+        {
+            return await _dbSet
+                .IgnoreQueryFilters()
+                .FirstOrDefaultAsync(p => p.Id == id);
+        }
+
         // ─────────────────────────────────────────────────────────────────────
         // HARD DELETE — physically removes the row from the database.
         // Caller is responsible for deleting associated image files BEFORE calling this.

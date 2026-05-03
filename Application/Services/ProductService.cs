@@ -388,7 +388,7 @@ namespace Application.Services
             try
             {
                 // We bypass the soft-delete filter so we can hard-delete even already soft-deleted products.
-                var product = await _unitOfWork.Products.GetByIdAsync(id);
+                var product = await _unitOfWork.Products.GetByIdIncludingDeletedAsync(id);
                 if (product == null)
                     return ServiceResult.NotFound("Product not found");
 

@@ -35,5 +35,11 @@ namespace Application.Services.Interfaces
         /// </summary>
         Task<ServiceResult<GatewayWebhookEvent>> ParseWebhookAsync(
             string rawBody, IDictionary<string, string> headers);
+
+        /// <summary>
+        /// Checks the current status of a payment session at the gateway.
+        /// Used by the reservation expiry sweep to confirm no payment occurred.
+        /// </summary>
+        Task<ServiceResult<GatewayPaymentStatus>> GetPaymentStatusAsync(string gatewayPaymentId);
     }
 }
