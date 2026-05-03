@@ -47,6 +47,9 @@ namespace Application.DTOs.Products
         // Flag to clear existing additional images - using string for reliable binding
         public string? ClearAdditionalImages { get; set; }
         
+        // List of specific additional image URLs to delete
+        public List<string>? DeleteAdditionalImages { get; set; }
+        
         // Flag to clear existing main image - using string to ensure reliable binding from FormData
         public string? ClearMainImage { get; set; }
         

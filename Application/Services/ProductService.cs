@@ -294,13 +294,55 @@ namespace Application.Services
                     }
                     additionalImagePaths = string.Empty;
                 }
-                else if (updateProductDto.AdditionalImages != null && updateProductDto.AdditionalImages.Length > 0)
+                else
                 {
-                    var paths = new List<string>();
-                    foreach (var image in updateProductDto.AdditionalImages)
-                        paths.Add(await _fileService.SaveFileAsync(image, "Products"));
+                    // Handle selective deletion of specific additional images
+                    var currentImages = new List<string>();
+                    if (!string.IsNullOrEmpty(product.AdditionalImageUrls))
+                    {
+                        currentImages = product.AdditionalImageUrls.Split(',')
+                            .Select(url => url.Trim())
+                            .Where(url => !string.IsNullOrEmpty(url))
+                            .ToList();
+                    }
 
-                    additionalImagePaths = string.Join(",", paths);
+                    // Delete specific images if requested
+                    if (updateProductDto.DeleteAdditionalImages != null && updateProductDto.DeleteAdditionalImages.Any())
+                    {
+                        foreach (var urlToDelete in updateProductDto.DeleteAdditionalImages)
+                        {
+                            // Find matching image (handle both full URLs and relative paths)
+                            var matchingImage = currentImages.FirstOrDefault(img => 
+                                img.Equals(urlToDelete, StringComparison.OrdinalIgnoreCase) ||
+                                img.EndsWith(urlToDelete.TrimStart('/'), StringComparison.OrdinalIgnoreCase) ||
+                                urlToDelete.EndsWith(img.TrimStart('/'), StringComparison.OrdinalIgnoreCase));
+
+                            if (matchingImage != null)
+                            {
+                                _fileService.DeleteFile(matchingImage);
+                                currentImages.Remove(matchingImage);
+                                _logger.LogInformation("  🗑️ Deleted specific additional image: {ImagePath}", matchingImage);
+                            }
+                        }
+                    }
+
+                    // Add new additional images if provided
+                    if (updateProductDto.AdditionalImages != null && updateProductDto.AdditionalImages.Length > 0)
+                    {
+                        foreach (var image in updateProductDto.AdditionalImages)
+                        {
+                            var newPath = await _fileService.SaveFileAsync(image, "Products");
+                            currentImages.Add(newPath);
+                            _logger.LogInformation("  ➕ Added new additional image: {ImagePath}", newPath);
+                        }
+                    }
+
+                    // Update the additional images path only if there were changes
+                    if (updateProductDto.DeleteAdditionalImages?.Any() == true || 
+                        updateProductDto.AdditionalImages?.Length > 0)
+                    {
+                        additionalImagePaths = currentImages.Any() ? string.Join(",", currentImages) : string.Empty;
+                    }
                 }
 
                 product.UpdateEntity(updateProductDto, mainImagePath, additionalImagePaths);
