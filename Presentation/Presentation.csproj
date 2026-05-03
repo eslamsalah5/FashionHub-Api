@@ -5,6 +5,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UserSecretsId>fashionhub-presentation-secrets</UserSecretsId>
+    <ErrorOnDuplicatePublishOutputFiles>false</ErrorOnDuplicatePublishOutputFiles>
   </PropertyGroup>
 
   <ItemGroup>
@@ -29,5 +30,12 @@
   <ItemGroup>
     <Folder Include="Controllers\" />
   </ItemGroup>
+
+  <Target Name="PublishRunWebpack" BeforeTargets="ComputeFilesToPublish">
+    <!-- As part of publishing, ensure the JS resources are fresh. -->
+    <Message Importance="high" Text="📦 Building Angular frontend for production..." />
+    <Exec WorkingDirectory="$(ProjectDir)..\..\FashionHubAngular" Command="npm install" />
+    <Exec WorkingDirectory="$(ProjectDir)..\..\FashionHubAngular" Command="npm run build -- --configuration production" />
+  </Target>
 
 </Project>

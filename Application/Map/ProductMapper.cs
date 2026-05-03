@@ -31,8 +31,8 @@ namespace Application.Map
                 AvailableSizes = product.AvailableSizes,
                 AvailableColors = product.AvailableColors,
                 Brand = product.Brand,
-                MainImageUrl = product.MainImageUrl,
-                AdditionalImageUrls = product.AdditionalImageUrls,
+                MainImageUrl = NormalizeImagePath(product.MainImageUrl),
+                AdditionalImageUrls = NormalizeAdditionalImages(product.AdditionalImageUrls),
                 AverageRating = product.AverageRating,
                 NumberOfRatings = product.NumberOfRatings,                Slug = product.Slug,
                 IsFeatured = product.IsFeatured,
@@ -95,14 +95,34 @@ namespace Application.Map
             product.AvailableSizes = dto.AvailableSizes;
             product.AvailableColors = dto.AvailableColors;            product.Brand = dto.Brand;
             product.Tags = dto.Tags;
+            product.IsFeatured = dto.IsFeatured;
+            product.IsActive = dto.IsActive;
             product.Slug = GenerateSlug(dto.Name);
 
-            // Update image paths only if new images were provided
-            if (!string.IsNullOrEmpty(mainImagePath))
+            // Update image paths (check for explicit clear flags first)
+            bool shouldClearMainImage = !string.IsNullOrEmpty(dto.ClearMainImage) && 
+                                       (dto.ClearMainImage.Equals("true", StringComparison.OrdinalIgnoreCase) || 
+                                        dto.ClearMainImage.Equals("1"));
+            if (shouldClearMainImage)
+            {
+                product.MainImageUrl = string.Empty;
+            }
+            else if (mainImagePath != null)
+            {
                 product.MainImageUrl = mainImagePath;
+            }
 
-            if (!string.IsNullOrEmpty(additionalImagePaths))
+            bool shouldClearAdditionalImages = !string.IsNullOrEmpty(dto.ClearAdditionalImages) && 
+                                             (dto.ClearAdditionalImages.Equals("true", StringComparison.OrdinalIgnoreCase) || 
+                                              dto.ClearAdditionalImages.Equals("1"));
+            if (shouldClearAdditionalImages)
+            {
+                product.AdditionalImageUrls = string.Empty;
+            }
+            else if (additionalImagePaths != null)
+            {
                 product.AdditionalImageUrls = additionalImagePaths;
+            }
         }
 
         /// <summary>
@@ -137,6 +157,20 @@ namespace Application.Map
                 .Replace(";", "")
                 .Replace("/", "-")
                 .Replace("\\", "-");
+        }
+
+        public static string NormalizeImagePath(string? path)
+        {
+            if (string.IsNullOrEmpty(path)) return string.Empty;
+            if (path.StartsWith("http") || path.StartsWith("/")) return path;
+            return $"/uploads/Products/{path}";
+        }
+
+        private static string NormalizeAdditionalImages(string? paths)
+        {
+            if (string.IsNullOrEmpty(paths)) return string.Empty;
+            return string.Join(",", paths.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(p => NormalizeImagePath(p.Trim())));
         }
     }
 }

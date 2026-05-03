@@ -44,8 +44,11 @@ namespace Application.DTOs.Products
         
         public IFormFile[]? AdditionalImages { get; set; }
         
-        // Flag to clear existing additional images
-        public bool ClearAdditionalImages { get; set; } = false;
+        // Flag to clear existing additional images - using string for reliable binding
+        public string? ClearAdditionalImages { get; set; }
+        
+        // Flag to clear existing main image - using string to ensure reliable binding from FormData
+        public string? ClearMainImage { get; set; }
         
         public bool IsFeatured { get; set; }
         

@@ -31,8 +31,15 @@ namespace Infrastructure.ExternalServices.FileService
             if (string.IsNullOrEmpty(filePath))
                 return;
                 
+            // Clean the path: remove leading slashes and 'uploads/' prefix if present
+            string cleanedPath = filePath.Replace("\\", "/").TrimStart('/');
+            if (cleanedPath.StartsWith("uploads/"))
+            {
+                cleanedPath = cleanedPath.Substring("uploads/".Length);
+            }
+
             // Convert the relative path to absolute
-            string fullPath = Path.Combine(_uploadsBaseDirectory, filePath);
+            string fullPath = Path.Combine(_uploadsBaseDirectory, cleanedPath);
             if (File.Exists(fullPath))
             {
                 File.Delete(fullPath);

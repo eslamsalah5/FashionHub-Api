@@ -6,6 +6,7 @@ using Domain.Entities;
 using Domain.Enums;
 using Domain.Repositories.Interfaces;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -17,16 +18,18 @@ namespace Application.Services
         private readonly IUnitOfWork _unitOfWork;
         private readonly IFileService _fileService;
         private readonly IMemoryCache _cache;
+        private readonly ILogger<ProductService> _logger;
 
         // Cache durations
         private static readonly TimeSpan ProductCacheExpiry = TimeSpan.FromMinutes(10);
         private static readonly TimeSpan FeaturedCacheExpiry = TimeSpan.FromMinutes(15);
 
-        public ProductService(IUnitOfWork unitOfWork, IFileService fileService, IMemoryCache cache)
+        public ProductService(IUnitOfWork unitOfWork, IFileService fileService, IMemoryCache cache, ILogger<ProductService> logger)
         {
             _unitOfWork = unitOfWork;
             _fileService = fileService;
             _cache = cache;
+            _logger = logger;
         }
 
         // ─────────────────────────────────────────────────────────────────────
@@ -246,6 +249,12 @@ namespace Application.Services
                 if (product == null || product.IsDeleted)
                     return ServiceResult.NotFound("Product not found");
 
+                // Debug logging
+                _logger.LogInformation("🔄 Updating product {ProductId}:", id);
+                _logger.LogInformation("  - ClearMainImage: {ClearMainImage}", updateProductDto.ClearMainImage);
+                _logger.LogInformation("  - MainImage provided: {HasMainImage}", updateProductDto.MainImage != null);
+                _logger.LogInformation("  - Current MainImageUrl: {CurrentUrl}", product.MainImageUrl);
+
                 string? mainImagePath = null;
                 if (updateProductDto.MainImage != null)
                 {
@@ -253,15 +262,35 @@ namespace Application.Services
                         _fileService.DeleteFile(product.MainImageUrl);
 
                     mainImagePath = await _fileService.SaveFileAsync(updateProductDto.MainImage, "Products");
+                    _logger.LogInformation("  ✅ New image saved: {NewPath}", mainImagePath);
+                }
+                else if (!string.IsNullOrEmpty(updateProductDto.ClearMainImage) && 
+                         (updateProductDto.ClearMainImage.Equals("true", StringComparison.OrdinalIgnoreCase) || 
+                          updateProductDto.ClearMainImage.Equals("1")))
+                {
+                    if (!string.IsNullOrEmpty(product.MainImageUrl))
+                    {
+                        _fileService.DeleteFile(product.MainImageUrl);
+                        _logger.LogInformation("  🗑️ Deleted old image: {OldPath}", product.MainImageUrl);
+                    }
+
+                    mainImagePath = string.Empty;
+                    _logger.LogInformation("  ✅ MainImageUrl will be cleared");
                 }
 
                 string? additionalImagePaths = null;
-                if (updateProductDto.ClearAdditionalImages)
+                bool shouldClearAdditionalImages = !string.IsNullOrEmpty(updateProductDto.ClearAdditionalImages) && 
+                                                 (updateProductDto.ClearAdditionalImages.Equals("true", StringComparison.OrdinalIgnoreCase) || 
+                                                  updateProductDto.ClearAdditionalImages.Equals("1"));
+
+                if (shouldClearAdditionalImages)
                 {
                     if (!string.IsNullOrEmpty(product.AdditionalImageUrls))
                     {
                         foreach (var imagePath in product.AdditionalImageUrls.Split(','))
                             _fileService.DeleteFile(imagePath.Trim());
+
+                        _logger.LogInformation("  🗑️ Deleted old additional images");
                     }
                     additionalImagePaths = string.Empty;
                 }
@@ -275,9 +304,14 @@ namespace Application.Services
                 }
 
                 product.UpdateEntity(updateProductDto, mainImagePath, additionalImagePaths);
+                
+                _logger.LogInformation("  - Updated MainImageUrl: {UpdatedUrl}", product.MainImageUrl);
+                
                 await _unitOfWork.SaveChangesAsync();
 
                 InvalidateProductCache(id);
+                
+                _logger.LogInformation("  ✅ Product {ProductId} updated successfully", id);
 
                 return ServiceResult.Success();
             }

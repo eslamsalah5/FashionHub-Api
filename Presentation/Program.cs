@@ -95,19 +95,25 @@ namespace Presentation
             // Use CORS middleware (should be before authentication)
             app.UseCorsMiddleware();
 
-            // Configure Static Files from the Angular 'browser' output folder
-            app.UseStaticFiles(new StaticFileOptions
+            // Enable default static files (to serve /uploads and other root-level assets)
+            app.UseStaticFiles();
+
+            // Configure Static Files from the Angular 'browser' output folder (Production only)
+            if (!app.Environment.IsDevelopment())
             {
-                FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(
-                    Path.Combine(builder.Environment.ContentRootPath, "wwwroot", "browser")),
-                OnPrepareResponse = ctx =>
+                app.UseStaticFiles(new StaticFileOptions
                 {
-                    // Cache static assets for 1 year in production
-                    const int durationInSeconds = 60 * 60 * 24 * 365;
-                    ctx.Context.Response.Headers[Microsoft.Net.Http.Headers.HeaderNames.CacheControl] =
-                        "public,max-age=" + durationInSeconds;
-                }
-            });
+                    FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(
+                        Path.Combine(builder.Environment.ContentRootPath, "wwwroot", "browser")),
+                    OnPrepareResponse = ctx =>
+                    {
+                        // Cache static assets for 1 year in production
+                        const int durationInSeconds = 60 * 60 * 24 * 365;
+                        ctx.Context.Response.Headers[Microsoft.Net.Http.Headers.HeaderNames.CacheControl] =
+                            "public,max-age=" + durationInSeconds;
+                    }
+                });
+            }
 
             app.UseHttpsRedirection();
 
@@ -117,8 +123,11 @@ namespace Presentation
 
             app.MapControllers();
             
-            // Map fallback for Angular client-side routing (pointing to the browser folder)
-            app.MapFallbackToFile("browser/index.html");
+            // Map fallback for Angular client-side routing (Production only)
+            if (!app.Environment.IsDevelopment())
+            {
+                app.MapFallbackToFile("browser/index.html");
+            }
 
             await app.RunAsync();
         }

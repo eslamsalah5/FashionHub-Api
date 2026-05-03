@@ -35,7 +35,7 @@ namespace Application.Map
                 Id = cartItem.Id,
                 ProductId = cartItem.ProductId,
                 ProductName = cartItem.Product?.Name ?? string.Empty,
-                ProductImageUrl = cartItem.Product?.MainImageUrl ?? string.Empty,
+                ProductImageUrl = ProductMapper.NormalizeImagePath(cartItem.Product?.MainImageUrl),
                 Quantity = cartItem.Quantity,
                 UnitPrice = cartItem.PriceAtAddition,
                 SelectedSize = cartItem.SelectedSize,

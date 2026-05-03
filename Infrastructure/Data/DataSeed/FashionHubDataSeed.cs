@@ -263,8 +263,13 @@ namespace Infrastructure.Data.DataSeed
                             Price = item.Price,
                             Category = Enum.Parse<ProductCategory>(item.Category, true),
                             Brand = item.Brand,
-                            MainImageUrl = item.MainImageUrl,
-                            AdditionalImageUrls = item.AdditionalImageUrls,
+                            MainImageUrl = item.MainImageUrl.StartsWith("http") || item.MainImageUrl.StartsWith("/") 
+                                ? item.MainImageUrl 
+                                : $"/uploads/Products/{item.MainImageUrl}",
+                            AdditionalImageUrls = string.Join(",", item.AdditionalImageUrls.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                                .Select(url => url.Trim().StartsWith("http") || url.Trim().StartsWith("/") 
+                                    ? url.Trim() 
+                                    : $"/uploads/Products/{url.Trim()}")),
                             StockQuantity = item.StockQuantity,
                             Gender = MapGenderValue(item.Gender),
                             AvailableSizes = item.AvailableSizes,

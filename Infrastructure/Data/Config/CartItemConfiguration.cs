@@ -18,7 +18,8 @@ namespace Infrastructure.Data.Config
             builder.HasOne(ci => ci.Product)
                 .WithMany()
                 .HasForeignKey(ci => ci.ProductId)
-                .OnDelete(DeleteBehavior.Restrict);
+                .OnDelete(DeleteBehavior.Restrict)
+                .IsRequired(false);
                 
             builder.Property(ci => ci.Quantity)
                 .IsRequired();
