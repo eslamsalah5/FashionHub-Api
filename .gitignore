@@ -274,3 +274,12 @@ docker-compose.override.yml
 *-secrets.yaml
 *-secret.yaml
 PAYMENT_SETUP.md
+
+# Angular Build Artifacts (copied from FashionHubAngular)
+Presentation/wwwroot/browser/
+Presentation/wwwroot/3rdpartylicenses.txt
+Presentation/wwwroot/prerendered-routes.json
+
+# User Uploads and Dynamic Content
+Presentation/wwwroot/uploads/
+

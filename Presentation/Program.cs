@@ -16,6 +16,14 @@ namespace Presentation
             builder.Services.AddControllers();
             builder.Services.AddMemoryCache();
 
+            // Enable Gzip/Brotli compression for best performance
+            builder.Services.AddResponseCompression(options =>
+            {
+                options.EnableForHttps = true;
+                options.MimeTypes = Microsoft.AspNetCore.ResponseCompression.ResponseCompressionDefaults.MimeTypes.Concat(
+                    new[] { "application/octet-stream", "image/svg+xml" });
+            });
+
             builder.Services.AddRepositoryServices();
 
 
@@ -81,11 +89,25 @@ namespace Presentation
             // Configure the Swagger middleware using extension method
             app.UseSwaggerMiddleware();
 
+            // Enable compression middleware
+            app.UseResponseCompression();
+
             // Use CORS middleware (should be before authentication)
             app.UseCorsMiddleware();
 
-            // Add static files middleware
-            app.UseStaticFiles();
+            // Configure Static Files from the Angular 'browser' output folder
+            app.UseStaticFiles(new StaticFileOptions
+            {
+                FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(
+                    Path.Combine(builder.Environment.ContentRootPath, "wwwroot", "browser")),
+                OnPrepareResponse = ctx =>
+                {
+                    // Cache static assets for 1 year in production
+                    const int durationInSeconds = 60 * 60 * 24 * 365;
+                    ctx.Context.Response.Headers[Microsoft.Net.Http.Headers.HeaderNames.CacheControl] =
+                        "public,max-age=" + durationInSeconds;
+                }
+            });
 
             app.UseHttpsRedirection();
 
@@ -94,6 +116,9 @@ namespace Presentation
             app.UseAuthorization();
 
             app.MapControllers();
+            
+            // Map fallback for Angular client-side routing (pointing to the browser folder)
+            app.MapFallbackToFile("browser/index.html");
 
             await app.RunAsync();
         }
