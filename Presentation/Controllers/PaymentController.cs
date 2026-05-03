@@ -109,6 +109,14 @@ namespace Presentation.Controllers
                     h => h.Value.ToString(),
                     StringComparer.OrdinalIgnoreCase);
 
+            // Paymob sends the HMAC as a query parameter (?hmac=...) — inject it into
+            // the headers dict so ParseWebhookAsync can find it in one place.
+            if (Request.Query.TryGetValue("hmac", out var hmacQuery) &&
+                !string.IsNullOrEmpty(hmacQuery))
+            {
+                headers["hmac"] = hmacQuery.ToString();
+            }
+
             var parseResult = await paymentGateway.ParseWebhookAsync(rawBody, headers);
 
             if (!parseResult.IsSuccess)
@@ -135,8 +143,7 @@ namespace Presentation.Controllers
             {
                 case GatewayEventTypes.PaymentSucceeded:
                 {
-                    var result = await _paymentService.HandlePaymentSucceededAsync(
-                        webhookEvent.GatewayPaymentId);
+                    var result = await _paymentService.HandlePaymentSucceededAsync(webhookEvent);
 
                     if (!result.IsSuccess)
                         _logger.LogError(
@@ -148,8 +155,7 @@ namespace Presentation.Controllers
 
                 case GatewayEventTypes.PaymentFailed:
                 {
-                    var result = await _paymentService.HandlePaymentFailedAsync(
-                        webhookEvent.GatewayPaymentId);
+                    var result = await _paymentService.HandlePaymentFailedAsync(webhookEvent);
 
                     if (!result.IsSuccess)
                         _logger.LogError(
@@ -168,6 +174,29 @@ namespace Presentation.Controllers
 
             // Always return 200 — prevents the gateway from retrying
             return Ok();
+        }
+
+        // ─────────────────────────────────────────────────────────────
+        // POST api/payment/force-success/{gatewayPaymentId}
+        // Temporary endpoint for debugging to prove the order creation logic works.
+        // Bypasses the Stripe webhook signature verification.
+        // ─────────────────────────────────────────────────────────────
+        [HttpPost("force-success/{gatewayPaymentId}")]
+        [AllowAnonymous]
+        public async Task<IActionResult> ForceSuccess([FromRoute] string gatewayPaymentId)
+        {
+            var dummyEvent = new GatewayWebhookEvent
+            {
+                EventType        = GatewayEventTypes.PaymentSucceeded,
+                GatewayPaymentId = gatewayPaymentId,
+                EventId          = "evt_test_forced"
+            };
+
+            var result = await _paymentService.HandlePaymentSucceededAsync(dummyEvent);
+            if (!result.IsSuccess)
+                return BadRequest(string.Join(", ", result.Errors));
+
+            return Ok(new { Message = "Order created successfully via forced webhook!", OrderId = result.Data });
         }
     }
 }

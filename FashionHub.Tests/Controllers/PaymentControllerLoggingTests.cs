@@ -35,7 +35,7 @@ public class PaymentControllerLoggingTests
 
         var mockPaymentService = new Mock<IPaymentService>();
         mockPaymentService
-            .Setup(s => s.HandlePaymentSucceededAsync(It.IsAny<string>()))
+            .Setup(s => s.HandlePaymentSucceededAsync(It.IsAny<GatewayWebhookEvent>()))
             .ReturnsAsync(ServiceResult<int>.Success(1));
 
         var (controller, mockLogger) = PaymentTestHelpers.BuildController(
@@ -97,7 +97,7 @@ public class PaymentControllerLoggingTests
 
         var mockPaymentService = new Mock<IPaymentService>();
         mockPaymentService
-            .Setup(s => s.HandlePaymentSucceededAsync(paymentId))
+            .Setup(s => s.HandlePaymentSucceededAsync(new GatewayWebhookEvent { GatewayPaymentId = paymentId }))
             .ReturnsAsync(ServiceResult<int>.Failure("Payment record not found"));
 
         var (controller, mockLogger) = PaymentTestHelpers.BuildController(
@@ -158,7 +158,7 @@ public class PaymentControllerLoggingTests
 
         var mockPaymentService = new Mock<IPaymentService>();
         mockPaymentService
-            .Setup(s => s.HandlePaymentFailedAsync(paymentId))
+            .Setup(s => s.HandlePaymentFailedAsync(new GatewayWebhookEvent { GatewayPaymentId = paymentId }))
             .ReturnsAsync(ServiceResult<bool>.Failure("Payment record not found"));
 
         var (controller, mockLogger) = PaymentTestHelpers.BuildController(
@@ -207,3 +207,5 @@ public class PaymentControllerLoggingTests
             Times.Once());
     }
 }
+
+

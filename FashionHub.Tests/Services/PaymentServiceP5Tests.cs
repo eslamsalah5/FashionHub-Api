@@ -1,3 +1,4 @@
+using Application.DTOs.Payment;
 using Application.Services;
 using Domain.Entities;
 using Domain.Repositories.Interfaces;
@@ -136,6 +137,9 @@ public class PaymentServiceP5Tests
         var mockUow = new Mock<IUnitOfWork>();
         mockUow.Setup(u => u.Payments).Returns(mockPaymentRepo.Object);
         mockUow.Setup(u => u.Carts).Returns(mockCartRepo.Object);
+        var mockUserRepo = new Mock<IUserRepository>();
+        mockUserRepo.Setup(r => r.GetByIdAsync(It.IsAny<string>())).ReturnsAsync((AppUser?)null);
+        mockUow.Setup(u => u.Users).Returns(mockUserRepo.Object);
         mockUow.Setup(u => u.Orders).Returns(mockOrderRepo.Object);
         mockUow.Setup(u => u.Products).Returns(mockProductRepo.Object);
         mockUow.Setup(u => u.SaveChangesAsync()).ReturnsAsync(1);
@@ -143,7 +147,7 @@ public class PaymentServiceP5Tests
         var service = new PaymentService(mockUow.Object, Array.Empty<Application.Services.Interfaces.IPaymentGateway>());
 
         // ── Act ───────────────────────────────────────────────────────────────
-        var result = service.HandlePaymentSucceededAsync(paymentIntentId).GetAwaiter().GetResult();
+        var result = service.HandlePaymentSucceededAsync(new GatewayWebhookEvent { GatewayPaymentId = paymentIntentId }).GetAwaiter().GetResult();
 
         // ── Assert ────────────────────────────────────────────────────────────
 
@@ -167,3 +171,10 @@ public class PaymentServiceP5Tests
         return true;
     }
 }
+
+
+
+
+
+
+

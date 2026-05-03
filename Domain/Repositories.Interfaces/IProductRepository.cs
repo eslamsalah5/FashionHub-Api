@@ -7,11 +7,20 @@ namespace Domain.Repositories.Interfaces
 {
     public interface IProductRepository : IGenericRepository<Product>
     {
-        Task<IReadOnlyList<Product>> GetProductsByCategoryAsync(ProductCategory category);
+        // Paged queries — filtering & pagination happen in SQL, not in memory
+        Task<(IReadOnlyList<Product> Items, int TotalCount)> GetPagedAsync(int pageIndex, int pageSize);
+        Task<(IReadOnlyList<Product> Items, int TotalCount)> GetPagedByCategoryAsync(ProductCategory category, int pageIndex, int pageSize);
+        Task<(IReadOnlyList<Product> Items, int TotalCount)> GetPagedOnSaleAsync(int pageIndex, int pageSize);
+        Task<(IReadOnlyList<Product> Items, int TotalCount)> SearchPagedAsync(string searchTerm, int pageIndex, int pageSize);
+
+        // Non-paged (small result sets)
         Task<IReadOnlyList<Product>> GetFeaturedProductsAsync();
-        Task<IReadOnlyList<Product>> GetProductsOnSaleAsync();
         Task<IReadOnlyList<Product>> GetProductsByBrandAsync(string brand);
-        Task<IReadOnlyList<Product>> SearchProductsAsync(string searchTerm);
+
+        // Stock
         Task<bool> UpdateStockQuantityAsync(int productId, int quantity);
+
+        // Hard delete — physically removes the record and is safe to call after images are already deleted
+        Task HardDeleteAsync(Product product);
     }
 }

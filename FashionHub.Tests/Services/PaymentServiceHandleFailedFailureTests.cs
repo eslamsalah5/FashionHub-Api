@@ -1,3 +1,4 @@
+using Application.DTOs.Payment;
 using Application.Services;
 using Domain.Entities;
 using Domain.Repositories.Interfaces;
@@ -27,6 +28,9 @@ public class PaymentServiceHandleFailedFailureTests
         var mockUow = new Mock<IUnitOfWork>();
         mockUow.Setup(u => u.Payments).Returns(mockPaymentRepo.Object);
         mockUow.Setup(u => u.Carts).Returns(mockCartRepo.Object);
+        var mockUserRepo = new Mock<IUserRepository>();
+        mockUserRepo.Setup(r => r.GetByIdAsync(It.IsAny<string>())).ReturnsAsync((AppUser?)null);
+        mockUow.Setup(u => u.Users).Returns(mockUserRepo.Object);
         mockUow.Setup(u => u.Orders).Returns(mockOrderRepo.Object);
         mockUow.Setup(u => u.SaveChangesAsync()).ReturnsAsync(1);
 
@@ -51,7 +55,7 @@ public class PaymentServiceHandleFailedFailureTests
         var service = new PaymentService(mockUow.Object, Array.Empty<Application.Services.Interfaces.IPaymentGateway>());
 
         // Act
-        var result = await service.HandlePaymentFailedAsync(PaymentIntentId);
+        var result = await service.HandlePaymentFailedAsync(new GatewayWebhookEvent { GatewayPaymentId = PaymentIntentId });
 
         // Assert
         Assert.False(result.IsSuccess);
@@ -76,7 +80,7 @@ public class PaymentServiceHandleFailedFailureTests
         var service = new PaymentService(mockUow.Object, Array.Empty<Application.Services.Interfaces.IPaymentGateway>());
 
         // Act
-        var result = await service.HandlePaymentFailedAsync(PaymentIntentId);
+        var result = await service.HandlePaymentFailedAsync(new GatewayWebhookEvent { GatewayPaymentId = PaymentIntentId });
 
         // Assert
         Assert.False(result.IsSuccess);
@@ -84,3 +88,10 @@ public class PaymentServiceHandleFailedFailureTests
         Assert.StartsWith("Error handling payment failed:", result.Errors[0]);
     }
 }
+
+
+
+
+
+
+

@@ -1,3 +1,7 @@
+# Kiro AI files
+.kiro/
+specs/
+
 # Visual Studio files
 .vs/
 *.user
@@ -128,22 +132,145 @@ UpgradeLog*.htm
 ServiceFabricBackup/
 *.rptproj.bak
 
-# Sensitive configuration files (uncomment if needed)
-# appsettings.json
+# Sensitive configuration files
 appsettings.Development.json
-appsettings.json
+appsettings.Production.json
+appsettings.Staging.json
 appsettings.*.json
+appsettings.json
 launchSettings.json
-# appsettings.json.backup
 App_Data/*.mdf
 App_Data/*.ldf
 
-# Other common files
+# Environment variables and secrets
+.env
+.env.local
+.env.development
+.env.production
+.env.*.local
+*.env
+secrets.json
+appsecrets.json
+
+# Database files
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Connection strings and API keys
+connectionstrings.json
+apikeys.json
+secrets/
+
+# SSL Certificates and keys
+*.pfx
+*.p12
+*.key
+*.pem
+*.crt
+*.cer
+*.der
+
+# Publishing profiles and deployment files
+*.pubxml
+*.pubxml.user
+*.publishsettings
+*.azurePubxml
+PublishProfiles/
+*.PublishSettings
+fashionhub.runasp.net-WebDeploy.publishSettings
+Presentation/.config/dotnet-tools.json
+Presentation/Properties/PublishProfiles/
+
+# Azure and cloud deployment files
+*.azurewebsites.net.pubxml
+ServiceConfiguration.*.cscfg
+*.Cloud.cscfg
+
+# User secrets
+**/Properties/launchSettings.json
+UserSecrets/
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+logs/
+*.stackdump
+
+# OS generated files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
+Desktop.ini
+
+# Documentation files (if they contain sensitive info)
 API_ENDPOINTS_PAYMENT.md
 PAYMENT_CHANGES_SUMMARY.md
 STRIPE_WEBHOOK_SETUP.md
-fashionhub.runasp.net-WebDeploy.publishSettings
-Presentation/.config/dotnet-tools.json
-Presentation/Properties/PublishProfiles/site66151-WebDeploy.pubxml
+
+# Backup files
+*.bak
+*.backup
+*.old
+*~
+
+# Migration scripts with sensitive data (if any)
+**/Migrations/*.sql
+
+# Package manager lock files (optional - uncomment if needed)
+# packages-lock.json
+# paket.lock
+
+# Rider
+.idea/
+*.sln.iml
+.idea_modules/
+
+# Visual Studio Code
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# Local development databases
+*.localdb
+
+# Test coverage reports
+coverage/
+*.coverage
+*.coveragexml
+
+# Resharper
+_ReSharper*/
+*.[Rr]e[Ss]harper
+*.DotSettings.user
+
+# NCrunch
+_NCrunch_*
+.*crunch*.local.xml
+nCrunchTemp_*
+
+# Benchmark results
+BenchmarkDotNet.Artifacts/
+
+# Docker
+docker-compose.override.yml
+.dockerignore
+
+# Terraform
+*.tfstate
+*.tfstate.backup
+.terraform/
+
+# Kubernetes secrets
+*-secrets.yaml
+*-secret.yaml
+PAYMENT_SETUP.md

@@ -145,6 +145,9 @@ public class PaymentServiceP2Tests
 
         var mockUow = new Mock<IUnitOfWork>();
         mockUow.Setup(u => u.Carts).Returns(mockCartRepo.Object);
+        var mockUserRepo = new Mock<IUserRepository>();
+        mockUserRepo.Setup(r => r.GetByIdAsync(It.IsAny<string>())).ReturnsAsync((AppUser?)null);
+        mockUow.Setup(u => u.Users).Returns(mockUserRepo.Object);
         mockUow.Setup(u => u.Payments).Returns(mockPaymentRepo.Object);
         mockUow.Setup(u => u.SaveChangesAsync()).ReturnsAsync(1);
 
@@ -156,7 +159,7 @@ public class PaymentServiceP2Tests
                 It.IsAny<decimal>(),
                 It.IsAny<string>(),
                 It.IsAny<string>(),
-                It.IsAny<string?>()))
+                It.IsAny<string?>(), It.IsAny<CustomerBillingInfo?>()))
             .ReturnsAsync(ServiceResult<GatewaySessionResult>.Success(new GatewaySessionResult
             {
                 ClientSecret     = fakeClientSecret,
@@ -199,3 +202,8 @@ public class PaymentServiceP2Tests
         return true;
     }
 }
+
+
+
+
+

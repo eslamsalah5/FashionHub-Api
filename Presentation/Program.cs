@@ -8,8 +8,12 @@ namespace Presentation
         {
             var builder = WebApplication.CreateBuilder(args);
 
+            // Configure Serilog
+            builder.ConfigureSerilog();
+
             // Add services to the container.
             builder.Services.AddControllers();
+            builder.Services.AddMemoryCache();
 
             builder.Services.AddRepositoryServices();
 
@@ -53,6 +57,12 @@ namespace Presentation
             builder.Services.AddDataSeedServices();
 
             var app = builder.Build();
+
+            // Ensure Serilog is properly closed on application shutdown
+            app.EnsureSerilogClosed();
+
+            // Use Global Exception Handling Middleware
+            app.UseMiddleware<Presentation.Middlewares.ExceptionMiddleware>();
 
             // Seed database data
             await app.SeedDatabaseAsync();

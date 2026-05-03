@@ -62,7 +62,9 @@ namespace Infrastructure.ExternalServices.PaymentGateways
         // Returns client_secret + publicKey for the frontend to open checkout
         // ─────────────────────────────────────────────────────────────────────
         public async Task<ServiceResult<GatewaySessionResult>> CreateSessionAsync(
-            decimal amount, string currency, string customerId, string? paymentMethod = null)
+            decimal amount, string currency, string customerId,
+            string? paymentMethod = null,
+            CustomerBillingInfo? billingInfo = null)
         {
             var methodKey = (paymentMethod ?? _defaultMethod).ToLowerInvariant();
 
@@ -79,37 +81,47 @@ namespace Infrastructure.ExternalServices.PaymentGateways
             {
                 var amountCents = (long)(amount * 100);
 
-                // Build the intention request
+                // ── Billing data — use real info if provided, safe defaults otherwise ──
+                var firstName   = billingInfo?.FirstName.Trim()    is { Length: > 0 } fn ? fn : "Customer";
+                var lastName    = billingInfo?.LastName.Trim()     is { Length: > 0 } ln ? ln : customerId;
+                var email       = billingInfo?.Email.Trim()        is { Length: > 0 } em ? em : "customer@fashionhub.com";
+                var phone       = billingInfo?.PhoneNumber.Trim()  is { Length: > 0 } ph ? ph : "+201000000000";
+                var street      = billingInfo?.Address.Trim()      is { Length: > 0 } ad ? ad : "NA";
+                var city        = billingInfo?.City.Trim()         is { Length: > 0 } ct ? ct : "Cairo";
+                var country     = billingInfo?.Country.Trim()      is { Length: > 0 } co ? co : "EG";
+
                 var intentionBody = new
                 {
                     amount          = amountCents,
                     currency        = currency.ToUpperInvariant(),
+                    // ── REQUIRED: Integration IDs from the Paymob dashboard ──
+                    // Paymob returns 400 if this field is missing.
                     payment_methods = new[] { int.Parse(methodConfig.IntegrationId) },
                     items           = Array.Empty<object>(),
                     billing_data    = new
                     {
-                        first_name    = "Customer",
-                        last_name     = customerId,
-                        email         = "customer@fashionhub.com",
-                        phone_number  = "+201000000000",
-                        apartment     = "NA",
-                        floor         = "NA",
-                        street        = "NA",
-                        building      = "NA",
-                        postal_code   = "NA",
-                        city          = "Cairo",
-                        country       = "EG",
-                        state         = "NA"
+                        first_name   = firstName,
+                        last_name    = lastName,
+                        email        = email,
+                        phone_number = phone,
+                        apartment    = "NA",
+                        floor        = "NA",
+                        street       = street,
+                        building     = "NA",
+                        postal_code  = "NA",
+                        city         = city,
+                        country      = country,
+                        state        = "NA"
                     },
-                    customer        = new
+                    customer = new
                     {
-                        first_name    = "Customer",
-                        last_name     = customerId,
-                        email         = "customer@fashionhub.com",
-                        phone_number  = "+201000000000"
+                        first_name   = firstName,
+                        last_name    = lastName,
+                        email        = email,
+                        phone_number = phone
                     },
-                    // Store customerId so webhook can look up the Payment record
-                    extras          = new { customer_id = customerId }
+                    // Store customerId in extras so webhook can fall back to it
+                    extras = new { customer_id = customerId }
                 };
 
                 var json = JsonSerializer.Serialize(intentionBody);
@@ -132,7 +144,7 @@ namespace Infrastructure.ExternalServices.PaymentGateways
                     ?? throw new InvalidOperationException(
                         "client_secret not found in Paymob response.");
 
-                // The GatewayPaymentId is the intention ID — used to match the webhook
+                // GatewayPaymentId = the intention ID echoed back as merchant_order_id in the webhook
                 var intentionId = doc.RootElement.TryGetProperty("id", out var idProp)
                     ? idProp.ToString()
                     : clientSecret;
@@ -203,11 +215,51 @@ namespace Infrastructure.ExternalServices.PaymentGateways
                 var success = obj.TryGetProperty("success", out var sp) && sp.GetBoolean();
                 var pending = obj.TryGetProperty("pending", out var pp) && pp.GetBoolean();
 
-                // GatewayPaymentId — try order.id first, then intention id
+                // ─────────────────────────────────────────────────────
+                // GatewayPaymentId resolution:
+                // At intent creation we store the Paymob intention "id".
+                // In the webhook, Paymob echoes that same id back as
+                // order.merchant_order_id — use that for the DB lookup.
+                // Fallback chain:
+                //   1. obj.order.merchant_order_id  ← matches stored intention id
+                //   2. obj.payment_key_claims.bill_reference
+                //   3. obj.order.id                 ← Paymob internal order id (different)
+                // ─────────────────────────────────────────────────────
                 var gatewayPaymentId = string.Empty;
-                if (obj.TryGetProperty("order", out var orderProp) &&
-                    orderProp.TryGetProperty("id", out var orderIdProp))
-                    gatewayPaymentId = orderIdProp.ToString();
+
+                if (obj.TryGetProperty("order", out var orderProp))
+                {
+                    // 1. merchant_order_id = the id we sent = intention id
+                    if (orderProp.TryGetProperty("merchant_order_id", out var moidProp) &&
+                        moidProp.ValueKind != JsonValueKind.Null)
+                    {
+                        gatewayPaymentId = moidProp.ToString();
+                    }
+
+                    // 2. Fallback: raw order id (may differ, but better than nothing)
+                    if (string.IsNullOrEmpty(gatewayPaymentId) &&
+                        orderProp.TryGetProperty("id", out var orderIdProp))
+                    {
+                        gatewayPaymentId = orderIdProp.ToString();
+                    }
+                }
+
+                // 3. bill_reference from payment_key_claims (another echo of merchant_order_id)
+                if (string.IsNullOrEmpty(gatewayPaymentId) &&
+                    obj.TryGetProperty("payment_key_claims", out var claimsProp) &&
+                    claimsProp.TryGetProperty("bill_reference", out var billRef))
+                {
+                    gatewayPaymentId = billRef.ToString();
+                }
+
+                // Extract customerId from extras so PaymentService can fall back to it
+                var customerId = string.Empty;
+                if (obj.TryGetProperty("order", out var orderForExtras) &&
+                    orderForExtras.TryGetProperty("merchant_extra", out var extraProp) &&
+                    extraProp.TryGetProperty("customer_id", out var cidProp))
+                {
+                    customerId = cidProp.GetString() ?? string.Empty;
+                }
 
                 var eventType = (success, pending) switch
                 {
@@ -224,6 +276,7 @@ namespace Infrastructure.ExternalServices.PaymentGateways
                     {
                         EventType        = eventType,
                         GatewayPaymentId = gatewayPaymentId,
+                        CustomerId       = customerId,
                         EventId          = eventId
                     }));
             }

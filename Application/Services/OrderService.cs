@@ -155,6 +155,8 @@ namespace Application.Services
                 var totalCount = await query.CountAsync();
 
                 var orders = await query
+                    .Include(o => o.Customer)
+                        .ThenInclude(c => c.AppUser)
                     .OrderByDescending(o => o.OrderDate)
                     .Skip((page - 1) * pageSize)
                     .Take(pageSize)

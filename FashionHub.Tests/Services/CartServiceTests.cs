@@ -491,12 +491,17 @@ public class CartServiceTests
         mockUserRepo
             .Setup(r => r.GetCustomerByUserIdAsync(UserId))
             .ReturnsAsync((Customer?)null);
+        
+        // Mock GetByIdAsync to return null (AppUser doesn't exist either)
+        mockUserRepo
+            .Setup(r => r.GetByIdAsync(UserId))
+            .ReturnsAsync((AppUser?)null);
 
         // Act
         var result = await service.GetCartAsync(UserId);
 
         // Assert
         Assert.False(result.IsSuccess);
-        Assert.Contains(result.Errors, e => e.Contains("Customer account not found"));
+        Assert.Contains(result.Errors, e => e.Contains("User account not found"));
     }
 }

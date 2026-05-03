@@ -27,7 +27,9 @@ namespace Infrastructure.ExternalServices.PaymentGateways
         // Create a Stripe PaymentIntent and return the clientSecret
         // ─────────────────────────────────────────────────────────────
         public async Task<ServiceResult<GatewaySessionResult>> CreateSessionAsync(
-            decimal amount, string currency, string customerId, string? paymentMethod = null)
+            decimal amount, string currency, string customerId,
+            string? paymentMethod = null,
+            CustomerBillingInfo? billingInfo = null)
         {
             try
             {

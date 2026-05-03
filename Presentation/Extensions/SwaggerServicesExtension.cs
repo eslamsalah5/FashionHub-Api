@@ -54,15 +54,18 @@ namespace Presentation.Extensions
 
         public static WebApplication UseSwaggerMiddleware(this WebApplication app)
         {
-            // Enable Swagger in all environments (Development + Production)
-            app.UseSwagger();
-            app.UseSwaggerUI(c =>
+            if (app.Environment.IsDevelopment())
             {
-                c.SwaggerEndpoint("/swagger/v1/swagger.json", "FashionHub API v1");
-                c.RoutePrefix = string.Empty; // Serve Swagger UI at root "/"
-                c.DocExpansion(Swashbuckle.AspNetCore.SwaggerUI.DocExpansion.None);
-                c.DefaultModelsExpandDepth(-1);
-            });
+                // Enable Swagger only in Development
+                app.UseSwagger();
+                app.UseSwaggerUI(c =>
+                {
+                    c.SwaggerEndpoint("/swagger/v1/swagger.json", "FashionHub API v1");
+                    c.RoutePrefix = string.Empty; // Serve Swagger UI at root "/"
+                    c.DocExpansion(Swashbuckle.AspNetCore.SwaggerUI.DocExpansion.None);
+                    c.DefaultModelsExpandDepth(-1);
+                });
+            }
 
             return app;
         }

@@ -24,5 +24,12 @@ namespace Application.DTOs.Payment
 
         /// <summary>Which gateway processed this session: "stripe" | "paymob"</summary>
         public string Gateway { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Full redirect URL for payment gateways that require external redirect.
+        /// For Paymob: https://accept.paymob.com/unifiedcheckout/?publicKey={PublicKey}&clientSecret={ClientSecret}
+        /// For Stripe: null (handled client-side with Stripe.js)
+        /// </summary>
+        public string? RedirectUrl { get; set; }
     }
 }

@@ -72,8 +72,8 @@ public class PaymentControllerP10Tests
         if (result is not BadRequestObjectResult { StatusCode: 400 })
             return false;
 
-        mockPaymentService.Verify(s => s.HandlePaymentSucceededAsync(It.IsAny<string>()), Times.Never());
-        mockPaymentService.Verify(s => s.HandlePaymentFailedAsync(It.IsAny<string>()), Times.Never());
+        mockPaymentService.Verify(s => s.HandlePaymentSucceededAsync(It.IsAny<GatewayWebhookEvent>()), Times.Never());
+        mockPaymentService.Verify(s => s.HandlePaymentFailedAsync(It.IsAny<GatewayWebhookEvent>()), Times.Never());
 
         return true;
     }
@@ -99,7 +99,8 @@ public class PaymentControllerP10Tests
         var badRequest = Assert.IsType<BadRequestObjectResult>(result);
         Assert.Equal(400, badRequest.StatusCode);
 
-        mockPaymentService.Verify(s => s.HandlePaymentSucceededAsync(It.IsAny<string>()), Times.Never());
-        mockPaymentService.Verify(s => s.HandlePaymentFailedAsync(It.IsAny<string>()), Times.Never());
+        mockPaymentService.Verify(s => s.HandlePaymentSucceededAsync(It.IsAny<GatewayWebhookEvent>()), Times.Never());
+        mockPaymentService.Verify(s => s.HandlePaymentFailedAsync(It.IsAny<GatewayWebhookEvent>()), Times.Never());
     }
 }
+

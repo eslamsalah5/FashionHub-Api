@@ -10,6 +10,7 @@ namespace Application.Map
         {
             return new OrderDto
             {
+                Id = order.Id,
                 CustomerName = order.Customer?.AppUser?.FullName ?? "Unknown Customer",                
                 OrderDate = order.OrderDate,
                 Status = order.Status,

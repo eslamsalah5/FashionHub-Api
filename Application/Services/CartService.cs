@@ -33,12 +33,31 @@ namespace Application.Services
                 // Log the actual user ID we're trying to find
                 _logger.LogInformation("Attempting to retrieve cart for user ID: {UserId}", userId);
                 
-                // Find the customer first to provide better error messages
+                // Find the customer
                 var customer = await _unitOfWork.Users.GetCustomerByUserIdAsync(userId);
                 if (customer == null)
                 {
-                    _logger.LogWarning("Customer not found for user ID: {UserId}", userId);
-                    return ServiceResult<CartDto>.Failure("Customer account not found. Please set up your customer profile first.");
+                    // This should not happen in normal flow - Customer should be created during registration
+                    // But we handle it gracefully for data integrity issues
+                    // MONITORING: Track this metric - frequent occurrences indicate registration issues
+                    // Recommended: Set up alerts if this fallback is triggered more than X times per hour
+                    _logger.LogWarning("CART_DEFENSIVE_FALLBACK: Customer record not found for user ID: {UserId} at {Timestamp}. Creating missing Customer record.", userId, DateTime.UtcNow);
+                    
+                    // Verify the AppUser exists
+                    var appUser = await _unitOfWork.Users.GetByIdAsync(userId);
+                    if (appUser == null)
+                    {
+                        _logger.LogError("CART_ERROR: AppUser not found for user ID: {UserId} at {Timestamp}", userId, DateTime.UtcNow);
+                        return ServiceResult<CartDto>.Failure("User account not found. Please contact support.");
+                    }
+                    
+                    // Create the missing Customer record
+                    var newCustomer = new Customer { Id = userId };
+                    await _unitOfWork.Customers.AddAsync(newCustomer);
+                    await _unitOfWork.SaveChangesAsync();
+                    customer = newCustomer;
+                    // MONITORING: Track successful fallback recovery
+                    _logger.LogInformation("CART_DEFENSIVE_FALLBACK_SUCCESS: Created missing Customer record for user {UserId} at {Timestamp}", userId, DateTime.UtcNow);
                 }
                 
                 // Get user's cart (moved to repository)
@@ -58,15 +77,20 @@ namespace Application.Services
         {
             try
             {
+                _logger.LogInformation("AddToCart called for user {UserId}, product {ProductId}", userId, request.ProductId);
+                
                 // Validate product exists and is in stock
                 var product = await _unitOfWork.Products.GetByIdAsync(request.ProductId);
                 if (product == null)
                 {
+                    _logger.LogWarning("Product {ProductId} not found", request.ProductId);
                     return ServiceResult<CartDto>.Failure("Product not found.");
                 }
 
                 if (product.StockQuantity < request.Quantity)
                 {
+                    _logger.LogWarning("Not enough stock for product {ProductId}. Requested: {Requested}, Available: {Available}", 
+                        request.ProductId, request.Quantity, product.StockQuantity);
                     return ServiceResult<CartDto>.Failure($"Not enough stock available. Only {product.StockQuantity} items left.");
                 }
 
@@ -74,16 +98,48 @@ namespace Application.Services
                 var customer = await _unitOfWork.Users.GetCustomerByUserIdAsync(userId);
                 if (customer == null)
                 {
-                    _logger.LogWarning("Customer not found for user ID: {UserId}", userId);
-                    return ServiceResult<CartDto>.Failure("Customer account not found");
+                    // This should not happen in normal flow - Customer should be created during registration
+                    // But we handle it gracefully for data integrity issues
+                    // MONITORING: Track this metric - frequent occurrences indicate registration issues
+                    // Recommended: Set up alerts if this fallback is triggered more than X times per hour
+                    _logger.LogWarning("CART_DEFENSIVE_FALLBACK: Customer record not found for user ID: {UserId} at {Timestamp}. Creating missing Customer record.", userId, DateTime.UtcNow);
+                    
+                    // Verify the AppUser exists
+                    var appUser = await _unitOfWork.Users.GetByIdAsync(userId);
+                    if (appUser == null)
+                    {
+                        _logger.LogError("CART_ERROR: AppUser not found for user ID: {UserId} at {Timestamp}", userId, DateTime.UtcNow);
+                        return ServiceResult<CartDto>.Failure("User account not found. Please contact support.");
+                    }
+                    
+                    // Create the missing Customer record
+                    var newCustomer = new Customer { Id = userId };
+                    await _unitOfWork.Customers.AddAsync(newCustomer);
+                    await _unitOfWork.SaveChangesAsync();
+                    customer = newCustomer;
+                    // MONITORING: Track successful fallback recovery
+                    _logger.LogInformation("CART_DEFENSIVE_FALLBACK_SUCCESS: Created missing Customer record for user {UserId} at {Timestamp}", userId, DateTime.UtcNow);
                 }
 
+                _logger.LogInformation("Customer found: {CustomerId}", customer.Id);
+
                 // Get user's cart or create a new one (moved to repository)
-                var cart = await _unitOfWork.Carts.GetOrCreateCartAsync(customer.Id);                // Add item to cart
-                await _unitOfWork.Carts.AddItemToCartAsync(cart.Id, request.ProductId, request.Quantity, request.SelectedSize, request.SelectedColor);
+                var cart = await _unitOfWork.Carts.GetOrCreateCartAsync(customer.Id);
+                _logger.LogInformation("Cart retrieved/created: {CartId}", cart.Id);
+
+                // Add item to cart
+                var addResult = await _unitOfWork.Carts.AddItemToCartAsync(cart.Id, request.ProductId, request.Quantity, request.SelectedSize, request.SelectedColor);
+                if (!addResult)
+                {
+                    _logger.LogError("Failed to add item to cart {CartId}", cart.Id);
+                    return ServiceResult<CartDto>.Failure("Failed to add item to cart.");
+                }
+                
+                _logger.LogInformation("Item added to cart {CartId}", cart.Id);
                 
                 // Save changes
                 await _unitOfWork.SaveChangesAsync();
+                _logger.LogInformation("Changes saved successfully");
                 
                 // Refresh cart with updated items
                 var updatedCart = await _unitOfWork.Carts.GetCartWithItemsByIdAsync(cart.Id);
@@ -96,7 +152,7 @@ namespace Application.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error adding item to cart for user {UserId}", userId);
+                _logger.LogError(ex, "Error adding item to cart for user {UserId}. Exception: {Message}", userId, ex.Message);
                 return ServiceResult<CartDto>.Failure("Failed to add item to cart. Please try again later.");
             }
         }        public async Task<ServiceResult<CartDto>> UpdateCartItemQuantityAsync(string userId, UpdateCartItemDto request)
@@ -107,7 +163,7 @@ namespace Application.Services
                 var customer = await _unitOfWork.Users.GetCustomerByUserIdAsync(userId);
                 if (customer == null)
                 {
-                    return ServiceResult<CartDto>.Failure("Customer account not found");
+                    return ServiceResult<CartDto>.Failure("CART_001: Customer record not found. This may indicate a data integrity issue. Please contact support. User ID: " + userId);
                 }
                 
                 // Get the cart
@@ -168,7 +224,7 @@ namespace Application.Services
                 var customer = await _unitOfWork.Users.GetCustomerByUserIdAsync(userId);
                 if (customer == null)
                 {
-                    return ServiceResult<CartDto>.Failure("Customer account not found");
+                    return ServiceResult<CartDto>.Failure("CART_001: Customer record not found. This may indicate a data integrity issue. Please contact support. User ID: " + userId);
                 }
                 
                 // Get the cart
@@ -219,7 +275,7 @@ namespace Application.Services
                 var customer = await _unitOfWork.Users.GetCustomerByUserIdAsync(userId);
                 if (customer == null)
                 {
-                    return ServiceResult<bool>.Failure("Customer account not found");
+                    return ServiceResult<bool>.Failure("CART_001: Customer record not found. This may indicate a data integrity issue. Please contact support. User ID: " + userId);
                 }
                 
                 // Get the cart
@@ -252,7 +308,7 @@ namespace Application.Services
                 var customer = await _unitOfWork.Users.GetCustomerByUserIdAsync(userId);
                 if (customer == null)
                 {
-                    return ServiceResult<CartDto>.Failure("Customer account not found");
+                    return ServiceResult<CartDto>.Failure("CART_001: Customer record not found. This may indicate a data integrity issue. Please contact support. User ID: " + userId);
                 }
                 
                 // Get the cart
@@ -307,7 +363,7 @@ namespace Application.Services
                 var customer = await _unitOfWork.Users.GetCustomerByUserIdAsync(userId);
                 if (customer == null)
                 {
-                    return ServiceResult<CartDto>.Failure("Customer account not found");
+                    return ServiceResult<CartDto>.Failure("CART_001: Customer record not found. This may indicate a data integrity issue. Please contact support. User ID: " + userId);
                 }
                 
                 // Get the cart

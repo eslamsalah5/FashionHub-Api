@@ -25,8 +25,7 @@ namespace Application.DTOs.Auth
         [Compare("Password", ErrorMessage = "The password and confirmation password do not match.")]
         public string ConfirmPassword { get; set; } = string.Empty;
         
-        [Required(ErrorMessage = "Profile picture is required for passenger registration")]
-        public IFormFile ProfilePicture { get; set; } = null!;
+        public IFormFile? ProfilePicture { get; set; }
         
         public DateTime? DateOfBirth { get; set; }
         

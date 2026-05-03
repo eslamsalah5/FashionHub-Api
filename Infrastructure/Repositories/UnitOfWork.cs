@@ -3,6 +3,7 @@ using Domain.Enums;
 using Domain.Repositories.Interfaces;
 using Infrastructure.Data;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore.Storage;
 using System;
 using System.Threading.Tasks;
 
@@ -19,6 +20,7 @@ namespace Infrastructure.Repositories
         private IPaymentRepository? _paymentRepository;
         private IGenericRepository<Admin>? _adminsRepository;
         private IGenericRepository<Customer>? _customersRepository;
+        private IDbContextTransaction? _currentTransaction;
 
         public UnitOfWork(
             ApplicationDbContext context,
@@ -60,5 +62,67 @@ namespace Infrastructure.Repositories
         {
             return await _context.SaveChangesAsync();
         }
+        
+        #region Transaction Methods
+        
+        public async Task BeginTransactionAsync()
+        {
+            if (_currentTransaction != null)
+            {
+                throw new InvalidOperationException("A transaction is already in progress.");
+            }
+            
+            _currentTransaction = await _context.Database.BeginTransactionAsync();
+        }
+        
+        public async Task CommitTransactionAsync()
+        {
+            if (_currentTransaction == null)
+            {
+                throw new InvalidOperationException("No transaction in progress.");
+            }
+            
+            try
+            {
+                await _context.SaveChangesAsync();
+                await _currentTransaction.CommitAsync();
+            }
+            catch
+            {
+                await RollbackTransactionAsync();
+                throw;
+            }
+            finally
+            {
+                if (_currentTransaction != null)
+                {
+                    await _currentTransaction.DisposeAsync();
+                    _currentTransaction = null;
+                }
+            }
+        }
+        
+        public async Task RollbackTransactionAsync()
+        {
+            if (_currentTransaction == null)
+            {
+                throw new InvalidOperationException("No transaction in progress.");
+            }
+            
+            try
+            {
+                await _currentTransaction.RollbackAsync();
+            }
+            finally
+            {
+                if (_currentTransaction != null)
+                {
+                    await _currentTransaction.DisposeAsync();
+                    _currentTransaction = null;
+                }
+            }
+        }
+        
+        #endregion
     }
 }

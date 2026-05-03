@@ -43,8 +43,13 @@ namespace Application.Services
 
             decimal totalAmount = cart.CartItems.Sum(ci => ci.Quantity * ci.PriceAtAddition);
 
+            // Build real billing info from the customer's profile
+            var billingInfo = await BuildBillingInfoAsync(customerId);
+
             // Delegate to the chosen gateway
-            var sessionResult = await gateway.CreateSessionAsync(totalAmount, "EGP", customerId, dto.PaymentMethod);
+            var sessionResult = await gateway.CreateSessionAsync(
+                totalAmount, "EGP", customerId, dto.PaymentMethod, billingInfo);
+
             if (!sessionResult.IsSuccess)
                 return ServiceResult<PaymentIntentResponseDto>.Failure(sessionResult.Errors);
 
@@ -61,23 +66,75 @@ namespace Application.Services
             await _unitOfWork.Payments.AddAsync(payment);
             await _unitOfWork.SaveChangesAsync();
 
+            // Build redirect URL for Paymob
+            string? redirectUrl = null;
+            if (gateway.GatewayName.Equals("paymob", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrEmpty(sessionResult.Data.PublicKey)
+                && !string.IsNullOrEmpty(sessionResult.Data.ClientSecret))
+            {
+                redirectUrl = $"https://accept.paymob.com/unifiedcheckout/?publicKey={sessionResult.Data.PublicKey}&clientSecret={sessionResult.Data.ClientSecret}";
+            }
+
             return ServiceResult<PaymentIntentResponseDto>.Success(new PaymentIntentResponseDto
             {
                 ClientSecret = sessionResult.Data.ClientSecret,
                 Amount       = totalAmount,
                 PublicKey    = sessionResult.Data.PublicKey,
-                Gateway      = gateway.GatewayName
+                Gateway      = gateway.GatewayName,
+                RedirectUrl  = redirectUrl
             });
+        }
+
+        // ─────────────────────────────────────────────────────────────
+        // Helper: fetch real customer billing info for Paymob requests
+        // ─────────────────────────────────────────────────────────────
+        private async Task<CustomerBillingInfo> BuildBillingInfoAsync(string customerId)
+        {
+            try
+            {
+                var user = await _unitOfWork.Users.GetByIdAsync(customerId);
+                if (user == null) return new CustomerBillingInfo();
+
+                // Split FullName into first / last
+                var parts     = (user.FullName ?? string.Empty).Trim().Split(' ', 2);
+                var firstName = parts.Length > 0 ? parts[0] : string.Empty;
+                var lastName  = parts.Length > 1 ? parts[1] : string.Empty;
+
+                return new CustomerBillingInfo
+                {
+                    FirstName   = firstName,
+                    LastName    = lastName,
+                    Email       = user.Email       ?? string.Empty,
+                    PhoneNumber = user.PhoneNumber ?? string.Empty,
+                    Address     = user.Address     ?? string.Empty,
+                };
+            }
+            catch
+            {
+                // Non-fatal — return defaults if lookup fails
+                return new CustomerBillingInfo();
+            }
         }
 
         // ─────────────────────────────────────────────────────────────
         // Step 2 – Called by the webhook handler when payment succeeds.
         // ─────────────────────────────────────────────────────────────
-        public async Task<ServiceResult<int>> HandlePaymentSucceededAsync(string gatewayPaymentId)
+        public async Task<ServiceResult<int>> HandlePaymentSucceededAsync(GatewayWebhookEvent webhookEvent)
         {
             try
             {
-                var payment = await _unitOfWork.Payments.GetByGatewayPaymentIdAsync(gatewayPaymentId);
+                // Primary lookup: by GatewayPaymentId stored at intent creation
+                var payment = await _unitOfWork.Payments.GetByGatewayPaymentIdAsync(
+                    webhookEvent.GatewayPaymentId);
+
+                // Fallback lookup: latest pending payment for this customer
+                // (needed for Paymob when merchant_order_id ≠ stored intention id)
+                if (payment == null && !string.IsNullOrEmpty(webhookEvent.CustomerId))
+                {
+                    payment = await _unitOfWork.Payments
+                        .GetPendingByCustomerIdAsync(webhookEvent.CustomerId);
+                }
+
                 if (payment == null)
                     return ServiceResult<int>.Failure("Payment record not found");
 
@@ -132,11 +189,20 @@ namespace Application.Services
         // ─────────────────────────────────────────────────────────────
         // Step 3 – Called by the webhook handler when payment fails.
         // ─────────────────────────────────────────────────────────────
-        public async Task<ServiceResult<bool>> HandlePaymentFailedAsync(string gatewayPaymentId)
+        public async Task<ServiceResult<bool>> HandlePaymentFailedAsync(GatewayWebhookEvent webhookEvent)
         {
             try
             {
-                var payment = await _unitOfWork.Payments.GetByGatewayPaymentIdAsync(gatewayPaymentId);
+                var payment = await _unitOfWork.Payments.GetByGatewayPaymentIdAsync(
+                    webhookEvent.GatewayPaymentId);
+
+                // Fallback: find by customerId if gatewayPaymentId doesn't match
+                if (payment == null && !string.IsNullOrEmpty(webhookEvent.CustomerId))
+                {
+                    payment = await _unitOfWork.Payments
+                        .GetPendingByCustomerIdAsync(webhookEvent.CustomerId);
+                }
+
                 if (payment == null)
                     return ServiceResult<bool>.Failure("Payment record not found");
 

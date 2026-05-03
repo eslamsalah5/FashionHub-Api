@@ -5,10 +5,9 @@ using Application.Services.Interfaces;
 using Domain.Entities;
 using Domain.Enums;
 using Domain.Repositories.Interfaces;
+using Microsoft.Extensions.Caching.Memory;
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Security.Claims;
 using System.Threading.Tasks;
 
 namespace Application.Services
@@ -17,37 +16,87 @@ namespace Application.Services
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IFileService _fileService;
+        private readonly IMemoryCache _cache;
 
-        public ProductService(IUnitOfWork unitOfWork, IFileService fileService)
+        // Cache durations
+        private static readonly TimeSpan ProductCacheExpiry = TimeSpan.FromMinutes(10);
+        private static readonly TimeSpan FeaturedCacheExpiry = TimeSpan.FromMinutes(15);
+
+        public ProductService(IUnitOfWork unitOfWork, IFileService fileService, IMemoryCache cache)
         {
             _unitOfWork = unitOfWork;
             _fileService = fileService;
-        }        public async Task<ServiceResult<ProductDto>> CreateProductAsync(CreateProductDto createProductDto)
+            _cache = cache;
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // Cache helpers
+        // Individual product cache keys, so we invalidate only what changed.
+        // ─────────────────────────────────────────────────────────────────────
+
+        private static string ProductKey(int id) => $"product_{id}";
+        private static string PagedAllKey(int pi, int ps) => $"products_all_{pi}_{ps}";
+        private static string PagedCatKey(ProductCategory cat, int pi, int ps) => $"products_cat_{cat}_{pi}_{ps}";
+        private static string PagedSaleKey(int pi, int ps) => $"products_sale_{pi}_{ps}";
+        private static string SearchKey(string term, int pi, int ps) => $"products_search_{term}_{pi}_{ps}";
+        private const string FeaturedKey = "products_featured";
+
+        /// <summary>
+        /// Removes only the cache entries that are directly related to the changed product.
+        /// List/page caches that might contain this product are cleared by a shared version token.
+        /// </summary>
+        private void InvalidateProductCache(int productId)
         {
-            // Authentication/Authorization is handled by [Authorize(Roles = "Admin")] at controller level
+            // Remove individual product entry
+            _cache.Remove(ProductKey(productId));
+
+            // Bump version token — all list caches embed this token in their key,
+            // so they are effectively expired without needing to enumerate every key.
+            _cache.Set("products_list_version", Guid.NewGuid().ToString(), TimeSpan.FromDays(1));
+
+            // Featured is also a list — clear it explicitly since it's a single key
+            _cache.Remove(FeaturedKey);
+        }
+
+        private string ListVersion()
+        {
+            return _cache.GetOrCreate("products_list_version",
+                entry =>
+                {
+                    entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromDays(1);
+                    return Guid.NewGuid().ToString();
+                })!;
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // CREATE
+        // ─────────────────────────────────────────────────────────────────────
+
+        public async Task<ServiceResult<ProductDto>> CreateProductAsync(CreateProductDto createProductDto)
+        {
             try
             {
-                // Save main image
                 string mainImagePath = await _fileService.SaveFileAsync(createProductDto.MainImage, "Products");
 
-                // Save additional images if any
                 string additionalImagePaths = string.Empty;
                 if (createProductDto.AdditionalImages != null && createProductDto.AdditionalImages.Length > 0)
                 {
                     var paths = new List<string>();
                     foreach (var image in createProductDto.AdditionalImages)
                     {
-                        string path = await _fileService.SaveFileAsync(image, "Products");
-                        paths.Add(path);
+                        paths.Add(await _fileService.SaveFileAsync(image, "Products"));
                     }
                     additionalImagePaths = string.Join(",", paths);
                 }
 
-                // Create product entity using the mapper extension method
                 var product = createProductDto.ToEntity(mainImagePath, additionalImagePaths);
 
                 await _unitOfWork.Products.AddAsync(product);
                 await _unitOfWork.SaveChangesAsync();
+
+                // New product only affects list caches
+                _cache.Set("products_list_version", Guid.NewGuid().ToString(), TimeSpan.FromDays(1));
+                _cache.Remove(FeaturedKey);
 
                 return ServiceResult<ProductDto>.Success(product.ToProductDto());
             }
@@ -55,176 +104,164 @@ namespace Application.Services
             {
                 return ServiceResult<ProductDto>.Failure($"Failed to create product: {ex.Message}");
             }
-        }        public async Task<ServiceResult<ProductDto>> GetProductByIdAsync(int id)
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // READ
+        // ─────────────────────────────────────────────────────────────────────
+
+        public async Task<ServiceResult<ProductDto>> GetProductByIdAsync(int id)
         {
             try
             {
-                var product = await _unitOfWork.Products.GetByIdAsync(id);
-                if (product == null || product.IsDeleted)
+                var cacheKey = ProductKey(id);
+                if (!_cache.TryGetValue(cacheKey, out ProductDto? productDto))
                 {
-                    return ServiceResult<ProductDto>.Failure("Product not found");
+                    var product = await _unitOfWork.Products.GetByIdAsync(id);
+                    if (product == null || product.IsDeleted)
+                        return ServiceResult<ProductDto>.NotFound("Product not found");
+
+                    productDto = product.ToProductDto();
+                    _cache.Set(cacheKey, productDto, ProductCacheExpiry);
                 }
 
-                return ServiceResult<ProductDto>.Success(product.ToProductDto());
+                return ServiceResult<ProductDto>.Success(productDto!);
             }
             catch (Exception ex)
             {
                 return ServiceResult<ProductDto>.Failure($"Failed to get product: {ex.Message}");
             }
-        }        public async Task<ServiceResult<IReadOnlyList<ProductDto>>> GetAllProductsAsync(int pageIndex, int pageSize)
+        }
+
+        public async Task<ServiceResult<PagedResult<ProductDto>>> GetAllProductsAsync(int pageIndex, int pageSize)
         {
             try
             {
-                // Get all products
-                var products = await _unitOfWork.Products.GetAllAsync();
-                
-                // Filter active products
-                var activeProducts = products.Where(p => p.IsActive).ToList();
-                
-                // Apply pagination
-                var totalCount = activeProducts.Count;
-                
-                // Ensure pageIndex is valid and at least 0
-                pageIndex = Math.Max(0, pageIndex);
-                
-                // Get the products for the requested page
-                var pagedProducts = activeProducts
-                    .Skip(pageIndex * pageSize)
-                    .Take(pageSize)
-                    .ToList();
-                
-                // Convert to DTOs
-                var productDtos = pagedProducts.ToProductDtoList();
-                
-                return ServiceResult<IReadOnlyList<ProductDto>>.Success(productDtos);
+                var cacheKey = $"{PagedAllKey(pageIndex, pageSize)}_{ListVersion()}";
+                if (!_cache.TryGetValue(cacheKey, out PagedResult<ProductDto>? result))
+                {
+                    var (items, totalCount) = await _unitOfWork.Products.GetPagedAsync(pageIndex, pageSize);
+                    result = new PagedResult<ProductDto>(items.ToProductDtoList(), pageIndex, pageSize, totalCount);
+                    _cache.Set(cacheKey, result, ProductCacheExpiry);
+                }
+
+                return ServiceResult<PagedResult<ProductDto>>.Success(result!);
             }
             catch (Exception ex)
             {
-                return ServiceResult<IReadOnlyList<ProductDto>>.Failure($"Failed to get products: {ex.Message}");
+                return ServiceResult<PagedResult<ProductDto>>.Failure($"Failed to get products: {ex.Message}");
             }
-        }public async Task<ServiceResult<IReadOnlyList<ProductDto>>> GetProductsByCategoryAsync(ProductCategory category, int pageIndex, int pageSize)
+        }
+
+        public async Task<ServiceResult<PagedResult<ProductDto>>> GetProductsByCategoryAsync(
+            ProductCategory category, int pageIndex, int pageSize)
         {
             try
             {
-                var products = await _unitOfWork.Products.GetProductsByCategoryAsync(category);
-                
-                // Apply pagination
-                var totalCount = products.Count;
-                var pageCount = (int)Math.Ceiling(totalCount / (double)pageSize);
-                
-                // Ensure pageIndex is valid
-                pageIndex = Math.Max(0, Math.Min(pageIndex, pageCount - 1));
-                
-                // Get the products for the requested page
-                var pagedProducts = products
-                    .Skip(pageIndex * pageSize)
-                    .Take(pageSize)
-                    .ToList();
-                
-                return ServiceResult<IReadOnlyList<ProductDto>>.Success(pagedProducts.ToProductDtoList());
+                var cacheKey = $"{PagedCatKey(category, pageIndex, pageSize)}_{ListVersion()}";
+                if (!_cache.TryGetValue(cacheKey, out PagedResult<ProductDto>? result))
+                {
+                    var (items, totalCount) = await _unitOfWork.Products.GetPagedByCategoryAsync(category, pageIndex, pageSize);
+                    result = new PagedResult<ProductDto>(items.ToProductDtoList(), pageIndex, pageSize, totalCount);
+                    _cache.Set(cacheKey, result, ProductCacheExpiry);
+                }
+
+                return ServiceResult<PagedResult<ProductDto>>.Success(result!);
             }
             catch (Exception ex)
             {
-                return ServiceResult<IReadOnlyList<ProductDto>>.Failure($"Failed to get products: {ex.Message}");
+                return ServiceResult<PagedResult<ProductDto>>.Failure($"Failed to get products by category: {ex.Message}");
             }
-        }public async Task<ServiceResult<IReadOnlyList<ProductDto>>> GetFeaturedProductsAsync()
+        }
+
+        public async Task<ServiceResult<IReadOnlyList<ProductDto>>> GetFeaturedProductsAsync()
         {
             try
             {
-                var products = await _unitOfWork.Products.GetFeaturedProductsAsync();
-                return ServiceResult<IReadOnlyList<ProductDto>>.Success(products.ToProductDtoList());
+                if (!_cache.TryGetValue(FeaturedKey, out IReadOnlyList<ProductDto>? cachedProducts))
+                {
+                    var products = await _unitOfWork.Products.GetFeaturedProductsAsync();
+                    cachedProducts = products.ToProductDtoList();
+                    _cache.Set(FeaturedKey, cachedProducts, FeaturedCacheExpiry);
+                }
+
+                return ServiceResult<IReadOnlyList<ProductDto>>.Success(cachedProducts!);
             }
             catch (Exception ex)
             {
                 return ServiceResult<IReadOnlyList<ProductDto>>.Failure($"Failed to get featured products: {ex.Message}");
             }
-        }        public async Task<ServiceResult<IReadOnlyList<ProductDto>>> GetProductsOnSaleAsync(int pageIndex, int pageSize)
+        }
+
+        public async Task<ServiceResult<PagedResult<ProductDto>>> GetProductsOnSaleAsync(int pageIndex, int pageSize)
         {
             try
             {
-                var products = await _unitOfWork.Products.GetProductsOnSaleAsync();
-                
-                // Apply pagination
-                var totalCount = products.Count;
-                var pageCount = (int)Math.Ceiling(totalCount / (double)pageSize);
-                
-                // Ensure pageIndex is valid
-                pageIndex = Math.Max(0, Math.Min(pageIndex, pageCount - 1));
-                
-                // Get the products for the requested page
-                var pagedProducts = products
-                    .Skip(pageIndex * pageSize)
-                    .Take(pageSize)
-                    .ToList();
-                
-                return ServiceResult<IReadOnlyList<ProductDto>>.Success(pagedProducts.ToProductDtoList());
-            }
-            catch (Exception ex)
-            {
-                return ServiceResult<IReadOnlyList<ProductDto>>.Failure($"Failed to get products on sale: {ex.Message}");
-            }
-        }        public async Task<ServiceResult<IReadOnlyList<ProductDto>>> SearchProductsAsync(string searchTerm, int pageIndex, int pageSize)
-        {
-            try
-            {
-                var products = await _unitOfWork.Products.SearchProductsAsync(searchTerm);
-                
-                // Apply pagination
-                var totalCount = products.Count;
-                var pageCount = (int)Math.Ceiling(totalCount / (double)pageSize);
-                
-                // Ensure pageIndex is valid
-                pageIndex = Math.Max(0, Math.Min(pageIndex, pageCount - 1));
-                
-                // Get the products for the requested page
-                var pagedProducts = products
-                    .Skip(pageIndex * pageSize)
-                    .Take(pageSize)
-                    .ToList();
-                
-                return ServiceResult<IReadOnlyList<ProductDto>>.Success(pagedProducts.ToProductDtoList());
-            }
-            catch (Exception ex)
-            {
-                return ServiceResult<IReadOnlyList<ProductDto>>.Failure($"Failed to search products: {ex.Message}");
-            }
-        }public async Task<ServiceResult> UpdateProductAsync(int id, UpdateProductDto updateProductDto)
-        {
-            // Authentication/Authorization is handled by [Authorize(Roles = "Admin")] at controller level
-            try
-            {
-                // Get the product
-                var product = await _unitOfWork.Products.GetByIdAsync(id);
-                if (product == null || product.IsDeleted)
+                var cacheKey = $"{PagedSaleKey(pageIndex, pageSize)}_{ListVersion()}";
+                if (!_cache.TryGetValue(cacheKey, out PagedResult<ProductDto>? result))
                 {
-                    return ServiceResult.Failure("Product not found");
+                    var (items, totalCount) = await _unitOfWork.Products.GetPagedOnSaleAsync(pageIndex, pageSize);
+                    result = new PagedResult<ProductDto>(items.ToProductDtoList(), pageIndex, pageSize, totalCount);
+                    _cache.Set(cacheKey, result, ProductCacheExpiry);
                 }
 
-                // Handle image updates if provided
-                string mainImagePath = null;
+                return ServiceResult<PagedResult<ProductDto>>.Success(result!);
+            }
+            catch (Exception ex)
+            {
+                return ServiceResult<PagedResult<ProductDto>>.Failure($"Failed to get products on sale: {ex.Message}");
+            }
+        }
+
+        public async Task<ServiceResult<PagedResult<ProductDto>>> SearchProductsAsync(
+            string searchTerm, int pageIndex, int pageSize)
+        {
+            try
+            {
+                var cacheKey = $"{SearchKey(searchTerm, pageIndex, pageSize)}_{ListVersion()}";
+                if (!_cache.TryGetValue(cacheKey, out PagedResult<ProductDto>? result))
+                {
+                    var (items, totalCount) = await _unitOfWork.Products.SearchPagedAsync(searchTerm, pageIndex, pageSize);
+                    result = new PagedResult<ProductDto>(items.ToProductDtoList(), pageIndex, pageSize, totalCount);
+                    _cache.Set(cacheKey, result, ProductCacheExpiry);
+                }
+
+                return ServiceResult<PagedResult<ProductDto>>.Success(result!);
+            }
+            catch (Exception ex)
+            {
+                return ServiceResult<PagedResult<ProductDto>>.Failure($"Failed to search products: {ex.Message}");
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // UPDATE
+        // ─────────────────────────────────────────────────────────────────────
+
+        public async Task<ServiceResult> UpdateProductAsync(int id, UpdateProductDto updateProductDto)
+        {
+            try
+            {
+                var product = await _unitOfWork.Products.GetByIdAsync(id);
+                if (product == null || product.IsDeleted)
+                    return ServiceResult.NotFound("Product not found");
+
+                string? mainImagePath = null;
                 if (updateProductDto.MainImage != null)
                 {
-                    // Delete old image if it exists
                     if (!string.IsNullOrEmpty(product.MainImageUrl))
-                    {
                         _fileService.DeleteFile(product.MainImageUrl);
-                    }
 
-                    // Save new image
                     mainImagePath = await _fileService.SaveFileAsync(updateProductDto.MainImage, "Products");
                 }
 
-                // Handle additional images
-                string additionalImagePaths = null;
+                string? additionalImagePaths = null;
                 if (updateProductDto.ClearAdditionalImages)
                 {
-                    // Delete old additional images
                     if (!string.IsNullOrEmpty(product.AdditionalImageUrls))
                     {
                         foreach (var imagePath in product.AdditionalImageUrls.Split(','))
-                        {
                             _fileService.DeleteFile(imagePath.Trim());
-                        }
                     }
                     additionalImagePaths = string.Empty;
                 }
@@ -232,73 +269,78 @@ namespace Application.Services
                 {
                     var paths = new List<string>();
                     foreach (var image in updateProductDto.AdditionalImages)
-                    {
-                        string path = await _fileService.SaveFileAsync(image, "Products");
-                        paths.Add(path);
-                    }
-                    additionalImagePaths = string.Join(",", paths);
-                }                // Update the product using mapper extension method
-                product.UpdateEntity(updateProductDto, mainImagePath, additionalImagePaths);
+                        paths.Add(await _fileService.SaveFileAsync(image, "Products"));
 
-                // Save changes
+                    additionalImagePaths = string.Join(",", paths);
+                }
+
+                product.UpdateEntity(updateProductDto, mainImagePath, additionalImagePaths);
                 await _unitOfWork.SaveChangesAsync();
+
+                InvalidateProductCache(id);
+
                 return ServiceResult.Success();
             }
             catch (Exception ex)
             {
                 return ServiceResult.Failure($"Failed to update product: {ex.Message}");
             }
-        }        public async Task<ServiceResult> UpdateStockQuantityAsync(int id, int quantity)
+        }
+
+        public async Task<ServiceResult> UpdateStockQuantityAsync(int id, int quantity)
         {
             try
             {
                 var success = await _unitOfWork.Products.UpdateStockQuantityAsync(id, quantity);
                 if (!success)
-                {
-                    return ServiceResult.Failure("Product not found");
-                }
-                
+                    return ServiceResult.NotFound("Product not found");
+
                 await _unitOfWork.SaveChangesAsync();
+
+                // Only invalidate the specific product cache — list caches show stock as a field,
+                // so we bump the version token too.
+                InvalidateProductCache(id);
+
                 return ServiceResult.Success();
             }
             catch (Exception ex)
             {
                 return ServiceResult.Failure($"Failed to update stock: {ex.Message}");
             }
-        }        public async Task<ServiceResult> ToggleProductStatusAsync(int id, bool isActive)
+        }
+
+        public async Task<ServiceResult> ToggleProductStatusAsync(int id, bool isActive)
         {
             try
             {
-                // Get the product
                 var product = await _unitOfWork.Products.GetByIdAsync(id);
                 if (product == null || product.IsDeleted)
-                {
-                    return ServiceResult.Failure("Product not found");
-                }                // Update product status
-                product.IsActive = isActive;
+                    return ServiceResult.NotFound("Product not found");
 
-                // Save changes
+                product.IsActive = isActive;
                 await _unitOfWork.SaveChangesAsync();
+                InvalidateProductCache(id);
+
                 return ServiceResult.Success();
             }
             catch (Exception ex)
             {
                 return ServiceResult.Failure($"Failed to toggle product status: {ex.Message}");
             }
-        }        public async Task<ServiceResult> ToggleFeaturedStatusAsync(int id, bool isFeatured)
+        }
+
+        public async Task<ServiceResult> ToggleFeaturedStatusAsync(int id, bool isFeatured)
         {
             try
             {
-                // Get the product
                 var product = await _unitOfWork.Products.GetByIdAsync(id);
                 if (product == null || product.IsDeleted)
-                {
-                    return ServiceResult.Failure("Product not found");
-                }                // Update product status
-                product.IsFeatured = isFeatured;
+                    return ServiceResult.NotFound("Product not found");
 
-                // Save changes
+                product.IsFeatured = isFeatured;
                 await _unitOfWork.SaveChangesAsync();
+                InvalidateProductCache(id);
+
                 return ServiceResult.Success();
             }
             catch (Exception ex)
@@ -307,51 +349,71 @@ namespace Application.Services
             }
         }
 
-        public async Task<ServiceResult> DeleteProductAsync(int id)
+        // ─────────────────────────────────────────────────────────────────────
+        // DELETE
+        // ─────────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Soft Delete: marks the product as deleted in the database.
+        /// Images are intentionally LEFT on disk so the product can be restored later.
+        /// </summary>
+        public async Task<ServiceResult> SoftDeleteProductAsync(int id)
         {
             try
             {
-                // Get the product
                 var product = await _unitOfWork.Products.GetByIdAsync(id);
                 if (product == null || product.IsDeleted)
-                {
-                    return ServiceResult.Failure("Product not found");
-                }
+                    return ServiceResult.NotFound("Product not found");
 
-                // Delete images first
-                if (!string.IsNullOrEmpty(product.MainImageUrl))
-                {
-                    _fileService.DeleteFile(product.MainImageUrl);
-                }
-
-                if (!string.IsNullOrEmpty(product.AdditionalImageUrls))
-                {
-                    foreach (var imagePath in product.AdditionalImageUrls.Split(','))
-                    {
-                        _fileService.DeleteFile(imagePath.Trim());
-                    }
-                }                // Delete the product (soft delete)
                 _unitOfWork.Products.SoftDelete(product);
                 await _unitOfWork.SaveChangesAsync();
-                
+
+                InvalidateProductCache(id);
+
                 return ServiceResult.Success();
             }
             catch (Exception ex)
             {
-                return ServiceResult.Failure($"Failed to delete product: {ex.Message}");
+                return ServiceResult.Failure($"Failed to soft-delete product: {ex.Message}");
             }
         }
-        public async Task<ServiceResult<int>> GetTotalProductCountAsync()
+
+        /// <summary>
+        /// Hard Delete: deletes all image files from disk FIRST, then permanently
+        /// removes the product row from the database.
+        /// This operation is irreversible.
+        /// </summary>
+        public async Task<ServiceResult> HardDeleteProductAsync(int id)
         {
             try
             {
-                var products = await _unitOfWork.Products.GetAllAsync();
-                var activeProducts = products.Where(p => p.IsActive && !p.IsDeleted).ToList();
-                return ServiceResult<int>.Success(activeProducts.Count);
+                // We bypass the soft-delete filter so we can hard-delete even already soft-deleted products.
+                var product = await _unitOfWork.Products.GetByIdAsync(id);
+                if (product == null)
+                    return ServiceResult.NotFound("Product not found");
+
+                // 1. Delete images from disk BEFORE removing the DB row
+                if (!string.IsNullOrEmpty(product.MainImageUrl))
+                    _fileService.DeleteFile(product.MainImageUrl);
+
+                if (!string.IsNullOrEmpty(product.AdditionalImageUrls))
+                {
+                    foreach (var imagePath in product.AdditionalImageUrls.Split(','))
+                        _fileService.DeleteFile(imagePath.Trim());
+                }
+
+                // 2. Permanently remove from database
+                await _unitOfWork.Products.HardDeleteAsync(product);
+                await _unitOfWork.SaveChangesAsync();
+
+                // 3. Remove from cache
+                InvalidateProductCache(id);
+
+                return ServiceResult.Success();
             }
             catch (Exception ex)
             {
-                return ServiceResult<int>.Failure($"Failed to get product count: {ex.Message}");
+                return ServiceResult.Failure($"Failed to hard-delete product: {ex.Message}");
             }
         }
     }

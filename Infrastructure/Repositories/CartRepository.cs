@@ -234,6 +234,10 @@ namespace Infrastructure.Repositories
             
             await AddCartAsync(newCart);
             
+            // CRITICAL FIX: Save the cart to database to generate the ID
+            // Without this, cart.Id will be 0 and AddItemToCartAsync will fail
+            await _context.SaveChangesAsync();
+            
             return newCart;
         }
     }

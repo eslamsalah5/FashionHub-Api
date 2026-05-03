@@ -6,6 +6,7 @@ using Domain.Enums;
 using Domain.Repositories.Interfaces;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using System.Security.Claims;
 using System.Text;
 
@@ -19,6 +20,7 @@ namespace Application.Services.Auth
         private readonly IEmailService _emailService;
         private readonly IFileService _fileService;
         private readonly IUnitOfWork _unitOfWork;
+        private readonly ILogger<AuthService> _logger;
 
         public AuthService(
             UserManager<AppUser> userManager,
@@ -26,7 +28,8 @@ namespace Application.Services.Auth
             IJwtService jwtService,
             IEmailService emailService,
             IFileService fileService,
-            IUnitOfWork unitOfWork)
+            IUnitOfWork unitOfWork,
+            ILogger<AuthService> logger)
         {
             _userManager = userManager;
             _signInManager = signInManager;
@@ -34,6 +37,7 @@ namespace Application.Services.Auth
             _emailService = emailService;
             _fileService = fileService;
             _unitOfWork = unitOfWork;
+            _logger = logger;
         }
 
         #region Common Authentication Methods
@@ -174,22 +178,32 @@ namespace Application.Services.Auth
         
                 public async Task<ServiceResult<IdentityResult>> RegisterCustomerAsync(CustomerDto customerDto)
         {
-              // Check if the profile picture was provided
-            if (customerDto.ProfilePicture == null || customerDto.ProfilePicture.Length == 0)
-            {
-                return ServiceResult<IdentityResult>.Failure("Profile picture is required for customer registration.");
-            }
-
+            _logger.LogInformation("Starting customer registration for email: {Email}", customerDto.Email);
+            
             // Check if user with email already exists
             var existingUser = await _userManager.FindByEmailAsync(customerDto.Email);
             
             if (existingUser != null)
             {
+                _logger.LogWarning("Registration failed: Email {Email} is already taken", customerDto.Email);
                 return ServiceResult<IdentityResult>.Failure("Email is already taken.");
             }
 
-            // Save profile picture
-            string profilePicPath = await _fileService.SaveFileAsync(customerDto.ProfilePicture, "ProfilePictures");
+            // Save profile picture if provided, otherwise use empty string
+            string profilePicPath = string.Empty;
+            if (customerDto.ProfilePicture != null && customerDto.ProfilePicture.Length > 0)
+            {
+                try
+                {
+                    profilePicPath = await _fileService.SaveFileAsync(customerDto.ProfilePicture, "ProfilePictures");
+                    _logger.LogInformation("Profile picture saved successfully at: {Path}", profilePicPath);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to save profile picture for email: {Email}", customerDto.Email);
+                    return ServiceResult<IdentityResult>.Failure("Failed to save profile picture. Please try again.");
+                }
+            }
 
             // Create AppUser
             var appUser = new AppUser
@@ -205,33 +219,117 @@ namespace Application.Services.Auth
                 DateCreated = DateTime.UtcNow,
             };
 
-            // Create user with password
-            var result = await _userManager.CreateAsync(appUser, customerDto.Password);
-
-            if (!result.Succeeded)
+            // Begin explicit transaction to ensure atomic creation of AppUser and Customer
+            await _unitOfWork.BeginTransactionAsync();
+            _logger.LogInformation("Transaction started for customer registration: {Email}", customerDto.Email);
+            
+            try
             {
-                // Delete uploaded image if user creation fails
+                // Create user with password
+                var result = await _userManager.CreateAsync(appUser, customerDto.Password);
+
+                if (!result.Succeeded)
+                {
+                    _logger.LogWarning("AppUser creation failed for email: {Email}. Errors: {Errors}", 
+                        customerDto.Email, 
+                        string.Join(", ", result.Errors.Select(e => e.Description)));
+                    
+                    // Rollback transaction
+                    await _unitOfWork.RollbackTransactionAsync();
+                    _logger.LogInformation("Transaction rolled back for email: {Email}", customerDto.Email);
+                    
+                    // Delete uploaded image if user creation fails
+                    if (!string.IsNullOrEmpty(profilePicPath))
+                    {
+                        _fileService.DeleteFile(profilePicPath);
+                        _logger.LogInformation("Profile picture deleted after failed registration: {Path}", profilePicPath);
+                    }
+                    return ServiceResult<IdentityResult>.Failure(result.Errors.Select(e => e.Description));
+                }
+
+                _logger.LogInformation("AppUser created successfully with ID: {UserId}", appUser.Id);
+
+                // Assign role
+                await _userManager.AddToRoleAsync(appUser, "Customer");
+                _logger.LogInformation("Customer role assigned to user: {UserId}", appUser.Id);
+
+                // Create customer entity with same ID as AppUser
+                var customer = new Customer
+                {
+                    Id = appUser.Id
+                };
+
+                // Validate ID consistency (defensive check)
+                if (customer.Id != appUser.Id)
+                {
+                    _logger.LogError("Data integrity error: Customer ID {CustomerId} does not match AppUser ID {AppUserId}", 
+                        customer.Id, appUser.Id);
+                    
+                    await _unitOfWork.RollbackTransactionAsync();
+                    _logger.LogInformation("Transaction rolled back due to ID mismatch for email: {Email}", customerDto.Email);
+                    
+                    // Delete uploaded image
+                    if (!string.IsNullOrEmpty(profilePicPath))
+                    {
+                        _fileService.DeleteFile(profilePicPath);
+                        _logger.LogInformation("Profile picture deleted after ID mismatch: {Path}", profilePicPath);
+                    }
+                    
+                    return ServiceResult<IdentityResult>.Failure("Data integrity error: Customer ID does not match AppUser ID. Please contact support.");
+                }
+
+                // Add customer to database
+                await _unitOfWork.Customers.AddAsync(customer);
+                _logger.LogInformation("Customer entity created with ID: {CustomerId}", customer.Id);
+                
+                // Commit transaction - both AppUser and Customer are created atomically
+                await _unitOfWork.CommitTransactionAsync();
+                _logger.LogInformation("Transaction committed successfully. Customer registration completed for email: {Email}, UserId: {UserId}", 
+                    customerDto.Email, appUser.Id);
+
+                return ServiceResult<IdentityResult>.Success(result);
+            }
+            catch (DbUpdateException dbEx)
+            {
+                // Database-specific errors
+                _logger.LogError(dbEx, "Database error during customer registration for email: {Email}. Inner exception: {InnerException}", 
+                    customerDto.Email, 
+                    dbEx.InnerException?.Message ?? "None");
+                
+                // Rollback transaction on any error
+                await _unitOfWork.RollbackTransactionAsync();
+                _logger.LogInformation("Transaction rolled back after database error for email: {Email}", customerDto.Email);
+                
+                // Delete uploaded image if transaction fails
                 if (!string.IsNullOrEmpty(profilePicPath))
                 {
                     _fileService.DeleteFile(profilePicPath);
+                    _logger.LogInformation("Profile picture deleted after database error: {Path}", profilePicPath);
                 }
-                return ServiceResult<IdentityResult>.Failure(result.Errors.Select(e => e.Description));
+                
+                return ServiceResult<IdentityResult>.Failure("Registration failed due to a database error. Please try again or contact support if the problem persists.");
             }
-
-            // Assign role
-            await _userManager.AddToRoleAsync(appUser, "Customer");
-
-            // Create customer entity
-            var customer = new Customer
+            catch (Exception ex)
             {
-                Id = appUser.Id
-            };
-
-            // Add customer to database
-            await _unitOfWork.Customers.AddAsync(customer);
-            await _unitOfWork.SaveChangesAsync();
-
-            return ServiceResult<IdentityResult>.Success(result);
+                // General errors
+                _logger.LogError(ex, "Unexpected error during customer registration for email: {Email}. Error type: {ErrorType}, Message: {Message}", 
+                    customerDto.Email, 
+                    ex.GetType().Name,
+                    ex.Message);
+                
+                // Rollback transaction on any error
+                await _unitOfWork.RollbackTransactionAsync();
+                _logger.LogInformation("Transaction rolled back after unexpected error for email: {Email}", customerDto.Email);
+                
+                // Delete uploaded image if transaction fails
+                if (!string.IsNullOrEmpty(profilePicPath))
+                {
+                    _fileService.DeleteFile(profilePicPath);
+                    _logger.LogInformation("Profile picture deleted after unexpected error: {Path}", profilePicPath);
+                }
+                
+                return ServiceResult<IdentityResult>.Failure($"Registration failed due to an unexpected error. Please try again or contact support if the problem persists. Error: {ex.Message}");
+            }
         }
 
 

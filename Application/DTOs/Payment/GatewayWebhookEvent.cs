@@ -19,6 +19,12 @@ namespace Application.DTOs.Payment
 
         /// <summary>Raw event ID from the gateway (for logging).</summary>
         public string EventId { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Optional: customerId echoed back by the gateway (Paymob only).
+        /// Used as a fallback in PaymentService when GatewayPaymentId lookup fails.
+        /// </summary>
+        public string? CustomerId { get; set; }
     }
 
     /// <summary>

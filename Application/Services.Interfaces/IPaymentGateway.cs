@@ -20,9 +20,12 @@ namespace Application.Services.Interfaces
         /// the frontend needs to complete the payment (e.g. clientSecret for Stripe.js).
         /// <paramref name="paymentMethod"/> is gateway-specific (e.g. "card", "vodafone_cash" for Paymob).
         /// Pass null for gateways that have a single integration (e.g. Stripe).
+        /// <paramref name="billingInfo"/> is optional but recommended for gateways that need it (e.g. Paymob).
         /// </summary>
         Task<ServiceResult<GatewaySessionResult>> CreateSessionAsync(
-            decimal amount, string currency, string customerId, string? paymentMethod = null);
+            decimal amount, string currency, string customerId,
+            string? paymentMethod = null,
+            CustomerBillingInfo? billingInfo = null);
 
         /// <summary>
         /// Reads the raw webhook body + headers and returns a normalised event.

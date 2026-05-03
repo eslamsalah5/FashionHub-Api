@@ -39,7 +39,12 @@ namespace Presentation.Controllers
         [HttpPost("items")]
         public async Task<ActionResult<ApiResponse>> AddToCart(AddToCartDto addToCartDto)
         {
-            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrEmpty(userId))
+            {
+                return Unauthorized(new ApiResponse(401, "User not authorized"));
+            }
+
             var result = await _cartService.AddToCartAsync(userId, addToCartDto);
 
             if (!result.IsSuccess)
@@ -49,7 +54,12 @@ namespace Presentation.Controllers
         }        [HttpPut("items")]
         public async Task<ActionResult<ApiResponse>> UpdateCartItem(UpdateCartItemDto updateCartItemDto)
         {
-            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrEmpty(userId))
+            {
+                return Unauthorized(new ApiResponse(401, "User not authorized"));
+            }
+
             var result = await _cartService.UpdateCartItemQuantityAsync(userId, updateCartItemDto);
 
             if (!result.IsSuccess)
@@ -61,7 +71,12 @@ namespace Presentation.Controllers
         [HttpPut("items/{cartItemId}/increase")]
         public async Task<ActionResult<ApiResponse>> IncreaseCartItemQuantity(int cartItemId)
         {
-            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrEmpty(userId))
+            {
+                return Unauthorized(new ApiResponse(401, "User not authorized"));
+            }
+
             var result = await _cartService.IncreaseCartItemQuantityAsync(userId, cartItemId);
 
             if (!result.IsSuccess)
@@ -73,7 +88,12 @@ namespace Presentation.Controllers
         [HttpPut("items/{cartItemId}/decrease")]
         public async Task<ActionResult<ApiResponse>> DecreaseCartItemQuantity(int cartItemId)
         {
-            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrEmpty(userId))
+            {
+                return Unauthorized(new ApiResponse(401, "User not authorized"));
+            }
+
             var result = await _cartService.DecreaseCartItemQuantityAsync(userId, cartItemId);
 
             if (!result.IsSuccess)
@@ -85,7 +105,12 @@ namespace Presentation.Controllers
         [HttpDelete("items/{cartItemId}")]
         public async Task<ActionResult<ApiResponse>> RemoveCartItem(int cartItemId)
         {
-            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrEmpty(userId))
+            {
+                return Unauthorized(new ApiResponse(401, "User not authorized"));
+            }
+
             var result = await _cartService.RemoveCartItemAsync(userId, cartItemId);
 
             if (!result.IsSuccess)
@@ -97,7 +122,12 @@ namespace Presentation.Controllers
         [HttpDelete("clear")]
         public async Task<ActionResult<ApiResponse>> ClearCart()
         {
-            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrEmpty(userId))
+            {
+                return Unauthorized(new ApiResponse(401, "User not authorized"));
+            }
+
             var result = await _cartService.ClearCartAsync(userId);
 
             if (!result.IsSuccess)
@@ -109,7 +139,12 @@ namespace Presentation.Controllers
         [HttpGet("count")]
         public async Task<ActionResult<ApiResponse>> GetCartItemCount()
         {
-            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrEmpty(userId))
+            {
+                return Unauthorized(new ApiResponse(401, "User not authorized"));
+            }
+
             var result = await _cartService.GetCartItemCountAsync(userId);
 
             if (!result.IsSuccess)
@@ -121,7 +156,12 @@ namespace Presentation.Controllers
         [HttpGet("check-product/{productId}")]
         public async Task<ActionResult<ApiResponse>> IsProductInCart(int productId)
         {
-            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrEmpty(userId))
+            {
+                return Unauthorized(new ApiResponse(401, "User not authorized"));
+            }
+
             var result = await _cartService.IsProductInCartAsync(userId, productId);
 
             if (!result.IsSuccess)

@@ -15,5 +15,10 @@ namespace Domain.Repositories.Interfaces
         IGenericRepository<Customer> Customers { get; }
 
         Task<int> SaveChangesAsync();
+        
+        // Transaction methods
+        Task BeginTransactionAsync();
+        Task CommitTransactionAsync();
+        Task RollbackTransactionAsync();
     }
 }

@@ -28,6 +28,9 @@ public class PaymentServiceFailureTests
 
         var mockUow = new Mock<IUnitOfWork>();
         mockUow.Setup(u => u.Carts).Returns(mockCartRepo.Object);
+        var mockUserRepo = new Mock<IUserRepository>();
+        mockUserRepo.Setup(r => r.GetByIdAsync(It.IsAny<string>())).ReturnsAsync((AppUser?)null);
+        mockUow.Setup(u => u.Users).Returns(mockUserRepo.Object);
         mockUow.Setup(u => u.Payments).Returns(mockPaymentRepo.Object);
         mockUow.Setup(u => u.SaveChangesAsync()).ReturnsAsync(1);
 
@@ -153,7 +156,7 @@ public class PaymentServiceFailureTests
                 It.IsAny<decimal>(),
                 It.IsAny<string>(),
                 It.IsAny<string>(),
-                It.IsAny<string?>()))
+                It.IsAny<string?>(), It.IsAny<CustomerBillingInfo?>()))
             .ReturnsAsync(ServiceResult<GatewaySessionResult>.Failure("Stripe error: Your card was declined."));
 
         var service = new PaymentService(mockUow.Object, new[] { mockGateway.Object });
@@ -215,7 +218,7 @@ public class PaymentServiceFailureTests
                 It.IsAny<decimal>(),
                 It.IsAny<string>(),
                 It.IsAny<string>(),
-                It.IsAny<string?>()))
+                It.IsAny<string?>(), It.IsAny<CustomerBillingInfo?>()))
             .ReturnsAsync(ServiceResult<GatewaySessionResult>.Failure("Error creating payment session: Database connection lost."));
 
         var service = new PaymentService(mockUow.Object, new[] { mockGateway.Object });
@@ -230,3 +233,8 @@ public class PaymentServiceFailureTests
         Assert.StartsWith("Error creating payment session:", result.Errors[0]);
     }
 }
+
+
+
+
+
