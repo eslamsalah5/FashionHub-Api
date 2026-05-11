@@ -255,13 +255,35 @@ namespace Infrastructure.ExternalServices.PaymentGateways
                     gatewayPaymentId = billRef.ToString();
                 }
 
-                // Extract customerId from extras so PaymentService can fall back to it
+                // Extract customerId from multiple possible Paymob JSON paths
                 var customerId = string.Empty;
-                if (obj.TryGetProperty("order", out var orderForExtras) &&
-                    orderForExtras.TryGetProperty("merchant_extra", out var extraProp) &&
-                    extraProp.TryGetProperty("customer_id", out var cidProp))
+                
+                if (obj.TryGetProperty("extras", out var rootExtraProp) &&
+                    rootExtraProp.TryGetProperty("customer_id", out var cidProp1))
                 {
-                    customerId = cidProp.GetString() ?? string.Empty;
+                    customerId = cidProp1.GetString() ?? string.Empty;
+                }
+                else if (obj.TryGetProperty("order", out var orderForExtras) &&
+                         orderForExtras.TryGetProperty("merchant_extra", out var extraProp) &&
+                         extraProp.TryGetProperty("customer_id", out var cidProp2))
+                {
+                    customerId = cidProp2.GetString() ?? string.Empty;
+                }
+                else if (obj.TryGetProperty("payment_key_claims", out var pkClaims) &&
+                         pkClaims.TryGetProperty("extra", out var pkExtra) &&
+                         pkExtra.TryGetProperty("customer_id", out var cidProp3))
+                {
+                    customerId = cidProp3.GetString() ?? string.Empty;
+                }
+                
+                // If customerId is still empty, let's try to grab the email from billing_data as a last resort
+                if (string.IsNullOrEmpty(customerId) && 
+                    obj.TryGetProperty("payment_key_claims", out var claimsProp2) &&
+                    claimsProp2.TryGetProperty("billing_data", out var billingProp) &&
+                    billingProp.TryGetProperty("email", out var emailProp))
+                {
+                    // We'll pass the email in the CustomerId field. The PaymentService will need to handle this.
+                    customerId = emailProp.GetString() ?? string.Empty;
                 }
 
                 var eventType = (success, pending) switch

@@ -171,8 +171,14 @@ namespace Application.Services
                 // (needed for Paymob when merchant_order_id ≠ stored intention id)
                 if (payment == null && !string.IsNullOrEmpty(webhookEvent.CustomerId))
                 {
+                    var actualCustomerId = webhookEvent.CustomerId;
+                    if (actualCustomerId.Contains('@'))
+                    {
+                        var user = await _unitOfWork.Users.GetUserByEmailAsync(actualCustomerId);
+                        if (user != null) actualCustomerId = user.Id;
+                    }
                     payment = await _unitOfWork.Payments
-                        .GetPendingByCustomerIdAsync(webhookEvent.CustomerId);
+                        .GetPendingByCustomerIdAsync(actualCustomerId);
                 }
 
                 if (payment == null)
@@ -311,8 +317,14 @@ namespace Application.Services
                 // Fallback: find by customerId if gatewayPaymentId doesn't match
                 if (payment == null && !string.IsNullOrEmpty(webhookEvent.CustomerId))
                 {
+                    var actualCustomerId = webhookEvent.CustomerId;
+                    if (actualCustomerId.Contains('@'))
+                    {
+                        var user = await _unitOfWork.Users.GetUserByEmailAsync(actualCustomerId);
+                        if (user != null) actualCustomerId = user.Id;
+                    }
                     payment = await _unitOfWork.Payments
-                        .GetPendingByCustomerIdAsync(webhookEvent.CustomerId);
+                        .GetPendingByCustomerIdAsync(actualCustomerId);
                 }
 
                 if (payment == null)
